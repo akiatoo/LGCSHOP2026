@@ -1,15 +1,7 @@
 
-// Fix: Use named imports for firestore functions to resolve missing member and access errors
-import { 
-  query, 
-  collection, 
-  where, 
-  getDocs, 
-  runTransaction, 
-  doc, 
-  getDoc, 
-  deleteDoc 
-} from "firebase/firestore";
+// Fix: Use namespace import for firestore to ensure availability of members in all build environments
+import * as firestore from "firebase/firestore";
+const { query, collection, where, getDocs, runTransaction, doc, getDoc, deleteDoc } = firestore as any;
 import { db } from "./config";
 import { COLLECTIONS } from "./collections";
 import { mapDoc, withTimestamp, cleanupData } from "./base";
@@ -18,14 +10,14 @@ import { SystemRepo } from "./systemRepo";
 
 export const ProductRepo = {
   getProducts: async (): Promise<Product[]> => {
-    // Fix: Call named export functions
+    // Fix: Use destructured firestore functions
     const q = query(collection(db, COLLECTIONS.PRODUCTS), where("isActive", "==", true));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(mapDoc) as Product[];
   },
 
   getCategories: async (): Promise<Category[]> => {
-    // Fix: Call named export functions
+    // Fix: Use destructured firestore functions
     const q = query(collection(db, COLLECTIONS.CATEGORIES), where("isActive", "==", true));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(mapDoc) as Category[];
@@ -33,8 +25,8 @@ export const ProductRepo = {
 
   saveCategory: async (category: Category) => {
     const isNew = !category.createdAt;
-    // Fix: Call named export functions
-    await runTransaction(db, async (transaction) => {
+    // Fix: Use destructured firestore functions
+    await runTransaction(db, async (transaction: any) => {
         const data = withTimestamp(cleanupData(category), isNew);
         transaction.set(doc(db, COLLECTIONS.CATEGORIES, category.id), data);
         await SystemRepo.logAction(isNew ? 'CREATE_CATEGORY' : 'UPDATE_CATEGORY', `${isNew ? 'Tạo' : 'Sửa'} danh mục: ${category.name}`);
@@ -42,7 +34,7 @@ export const ProductRepo = {
   },
 
   deleteCategory: async (id: string) => {
-    // Fix: Call named export functions
+    // Fix: Use destructured firestore functions
     const ref = doc(db, COLLECTIONS.CATEGORIES, id);
     const snap = await getDoc(ref);
     const name = snap.exists() ? snap.data().name : id;
@@ -54,8 +46,8 @@ export const ProductRepo = {
     const isNew = !product.createdAt;
     const now = Date.now();
     
-    // Fix: Call named export functions
-    return await runTransaction(db, async (transaction) => {
+    // Fix: Use destructured firestore functions
+    return await runTransaction(db, async (transaction: any) => {
         // 1. Logic tự động đồng bộ tên danh mục từ ID
         let finalCategoryName = product.categoryName || 'Khác';
         if (product.categoryId) {
@@ -110,7 +102,7 @@ export const ProductRepo = {
   },
 
   deleteProduct: async (id: string) => {
-    // Fix: Call named export functions
+    // Fix: Use destructured firestore functions
     const ref = doc(db, COLLECTIONS.PRODUCTS, id);
     const snap = await getDoc(ref);
     const name = snap.exists() ? snap.data().name : id;

@@ -3,7 +3,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Product, Category, Order } from '../types';
 import { StorageService } from '../services/storageService';
 import { Plus, Edit2, Trash2, X, Save, Search, Hammer, ArrowDownToLine, Wrench, Loader2, Sparkles, AlertCircle, CheckCircle2, Filter, Package, History, BarChart3, Printer, RefreshCcw, Settings2, Tag } from 'lucide-react';
-import { writeBatch, doc, runTransaction, getDoc } from "firebase/firestore";
+// Fix: Use namespace import for firestore to avoid named export availability issues
+import * as firestore from "firebase/firestore";
+const { writeBatch, doc, runTransaction, getDoc } = firestore as any;
 import { db } from '../database/config';
 import { COLLECTIONS } from '../database/collections';
 import { TableContainer, TableHead, TableBody, TableRow, TableCell, TableHeaderCell, Button, Badge, Card, EmptyState } from './ui/Base';
@@ -106,7 +108,7 @@ export const Materials: React.FC = () => {
             isActive: true
         };
 
-        await runTransaction(db, async (transaction) => {
+        await runTransaction(db, async (transaction: any) => {
             const matRef = doc(db, COLLECTIONS.PRODUCTS, materialId);
             transaction.set(matRef, materialData);
 
@@ -160,7 +162,7 @@ export const Materials: React.FC = () => {
         const now = Date.now();
         const code = await StorageService.getNextDocumentNumber(stockForm.type as any);
 
-        await runTransaction(db, async (transaction) => {
+        await runTransaction(db, async (transaction: any) => {
             const matRef = doc(db, COLLECTIONS.PRODUCTS, stockForm.productId);
             const matSnap = await transaction.get(matRef);
             

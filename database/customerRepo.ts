@@ -1,5 +1,7 @@
 
-import { collection, getDocs, doc, query, where, writeBatch, setDoc, deleteDoc, runTransaction, getDoc } from "firebase/firestore";
+// Fix: Use namespace import for firestore to ensure all modular functions are accessible
+import * as firestore from "firebase/firestore";
+const { collection, getDocs, doc, query, where, writeBatch, setDoc, deleteDoc, runTransaction, getDoc } = firestore as any;
 import { db } from "./config";
 import { COLLECTIONS } from "./collections";
 import { mapDoc, withTimestamp } from "./base";
@@ -30,7 +32,7 @@ export const CustomerRepo = {
       throw new Error("Số điện thoại không hợp lệ (tối thiểu 10 số).");
     }
 
-    return await runTransaction(db, async (transaction) => {
+    return await runTransaction(db, async (transaction: any) => {
       // Kiểm tra trùng lặp dựa trên số điện thoại đã chuẩn hóa
       const phoneQuery = query(
         collection(db, COLLECTIONS.CUSTOMERS), 
@@ -75,7 +77,7 @@ export const CustomerRepo = {
     if (!cleanName) throw new Error("Tên nhà cung cấp không được để trống.");
     if (cleanPhone.length < 10) throw new Error("Số điện thoại nhà cung cấp không hợp lệ.");
 
-    return await runTransaction(db, async (transaction) => {
+    return await runTransaction(db, async (transaction: any) => {
       // 1. Kiểm tra trùng tên (không phân biệt hoa thường)
       const nameQuery = query(
         collection(db, COLLECTIONS.SUPPLIERS), 

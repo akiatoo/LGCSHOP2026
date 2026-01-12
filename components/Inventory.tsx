@@ -11,7 +11,9 @@ import {
   ImageIcon, Filter, AlertTriangle, User, Info, ReceiptText, Clock, Hash, Tag, Trash, UserCheck, Hammer, ChevronDown, FileDigit,
   UserCircle, FileType, Notebook, Image as LucideImage, Wrench, ArrowRightLeft, MoveRight
 } from 'lucide-react';
-import { writeBatch, doc, runTransaction, getDoc } from "firebase/firestore";
+// Fix: Use namespace import for firestore to ensure member availability across build environments
+import * as firestore from "firebase/firestore";
+const { writeBatch, doc, runTransaction, getDoc } = firestore as any;
 import { db } from '../database/config';
 import { COLLECTIONS } from '../database/collections';
 import { cleanupData } from '../database/base';
@@ -190,7 +192,7 @@ export const Inventory: React.FC = () => {
       const now = Date.now();
       const code = await StorageService.getNextDocumentNumber(bulkType as any);
       
-      await runTransaction(db, async (transaction) => {
+      await runTransaction(db, async (transaction: any) => {
           const itemsToProcess = [];
           for (const item of bulkItems) {
               const pRef = doc(db, COLLECTIONS.PRODUCTS, item.productId);
@@ -241,7 +243,6 @@ export const Inventory: React.FC = () => {
       });
       await loadData();
       
-      // RESET TOÀN BỘ TRƯỜNG NHẬP SAU KHI LƯU THÀNH CÔNG
       setBulkItems([]);
       setBulkNote('');
       setSupplierSearch('');
@@ -450,7 +451,6 @@ export const Inventory: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL PHIẾU LÔ */}
       {isBulkModalOpen && (
           <Modal isOpen={true} onClose={() => setIsBulkModalOpen(false)} title="Lập phiếu Kho lô hàng" maxWidth="6xl" icon={<ListPlus className="w-6 h-6 text-primary-600" />}>
               <div className="space-y-6">
@@ -653,7 +653,6 @@ export const Inventory: React.FC = () => {
           </Modal>
       )}
 
-      {/* MODAL CHI TIẾT SẢN PHẨM */}
       {isProductModalOpen && (
           <Modal 
             isOpen={true} 

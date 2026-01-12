@@ -1,4 +1,7 @@
-import { collection, getDocs, doc, setDoc, query, where, orderBy, writeBatch, limit, deleteDoc, updateDoc, runTransaction, getDoc } from "firebase/firestore";
+
+// Fix: Use namespace import for firestore to ensure availability of modular exports in all configurations
+import * as firestore from "firebase/firestore";
+const { collection, getDocs, doc, setDoc, query, where, orderBy, writeBatch, limit, deleteDoc, updateDoc, runTransaction, getDoc } = firestore as any;
 import { db } from "./config";
 import { COLLECTIONS } from "./collections";
 import { mapDoc, withTimestamp, cleanupData, getCurrentUserSync } from "./base";
@@ -73,7 +76,7 @@ export const SystemRepo = {
     const counterRef = doc(db, 'counters', type);
     const year = new Date().getFullYear().toString().slice(-2);
     
-    return await runTransaction(db, async (transaction) => {
+    return await runTransaction(db, async (transaction: any) => {
       const counterSnap = await transaction.get(counterRef);
       let nextNum = 1;
       if (counterSnap.exists()) {
@@ -171,7 +174,7 @@ export const SystemRepo = {
 
   saveGift: async (gift: Gift) => {
     const isNew = !gift.createdAt;
-    await runTransaction(db, async (transaction) => {
+    await runTransaction(db, async (transaction: any) => {
         const giftRef = doc(db, COLLECTIONS.GIFTS, gift.id);
         const data = withTimestamp(cleanupData(gift), isNew);
         transaction.set(giftRef, data, { merge: true });
@@ -188,16 +191,18 @@ export const SystemRepo = {
   },
 
   generateProductDescription: async (name: string, category: string, specs: string): Promise<string> => {
+    // Fix: Use correct initialization as per Gemini SDK guidelines
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
       const prompt = `Bạn là chuyên gia tư vấn bán hàng chuyên nghiệp. Hãy viết lời giới thiệu ngắn gọn (tối đa 35 từ) cho sản phẩm ${name} thuộc loại ${category} với thông số: ${specs}. Văn phong hiện đại, súc tích.`;
       const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
-      // Correct usage of response.text property (not a method)
+      // Fix: Access text property directly (it's not a function in the new SDK)
       return response.text?.trim() || "";
     } catch (e) { return "Sản phẩm chất lượng cao, phục vụ tốt nhu cầu khách hàng."; }
   },
 
   getSmartInsights: async (dataContext?: string): Promise<string> => {
+    // Fix: Use correct initialization as per Gemini SDK guidelines
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
       const prompt = `Bạn là cố vấn tài chính kinh doanh. Dựa trên dữ liệu tài chính: ${dataContext || 'Không có dữ liệu'}. Hãy đưa ra 3 lời khuyên cực ngắn gọn để tối ưu hóa doanh thu và quản lý kho.`;
@@ -205,12 +210,12 @@ export const SystemRepo = {
         model: 'gemini-3-pro-preview', 
         contents: prompt,
         config: { 
-          // Rule: Set both maxOutputTokens and thinkingConfig.thinkingBudget at the same time for models supporting thinking
+          // Rule: Set maxOutputTokens and thinkingBudget together for Gemini 3 reasoning models
           maxOutputTokens: 2000,
           thinkingConfig: { thinkingBudget: 1000 } 
         }
       });
-      // Correct usage of response.text property (not a method)
+      // Fix: Access text property directly (it's not a function in the new SDK)
       return response.text || "Duy trì kiểm soát tốt tồn kho và chăm sóc khách hàng thân thiết.";
     } catch { return "AI đang bận phân tích, vui lòng quay lại sau."; }
   },

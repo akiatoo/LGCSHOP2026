@@ -1,6 +1,7 @@
 
 import { initializeApp } from 'firebase/app';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+// Fix: Use namespace import for firestore to avoid member resolution issues in some environments
+import * as firestore from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAg8XRhrqPThqNBPbRC0qrH_eJw7UcBOcs",
@@ -12,12 +13,8 @@ const firebaseConfig = {
   measurementId: "G-DWKTLQWBEM"
 };
 
-// Fix: Khởi tạo Firebase bằng named export initializeApp
+// Fix: Initialize Firebase app using modular SDK
 const app = initializeApp(firebaseConfig);
 
-// Fix: Khởi tạo Firestore bằng modular functions thay vì namespace property access
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
-});
+// Fix: Export db instance using getFirestore from destructured namespace for standard modular access
+export const db = (firestore as any).getFirestore(app);

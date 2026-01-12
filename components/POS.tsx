@@ -37,22 +37,47 @@ export const POS: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
   
+  // Khôi phục trạng thái từ localStorage
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    const saved = localStorage.getItem('lgc_pos_cart');
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(() => {
+    const saved = localStorage.getItem('lgc_pos_customer');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [discount, setDiscount] = useState<number>(() => {
+    const saved = localStorage.getItem('lgc_pos_discount');
+    return saved ? Number(saved) : 0;
+  });
+
+  const [discountType, setDiscountType] = useState<'amount' | 'percent'>(() => {
+    const saved = localStorage.getItem('lgc_pos_discount_type');
+    return (saved as any) || 'amount';
+  });
+
+  const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'products' | 'cart'>('products');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info'; id: number } | null>(null);
 
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
   const [activeSerialItem, setActiveSerialItem] = useState<CartItem | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer' | 'credit'>('cash');
 
-  const [discount, setDiscount] = useState<number>(0);
-  const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Tự động lưu trạng thái khi có thay đổi
+  useEffect(() => {
+    localStorage.setItem('lgc_pos_cart', JSON.stringify(cart));
+    localStorage.setItem('lgc_pos_customer', JSON.stringify(selectedCustomer));
+    localStorage.setItem('lgc_pos_discount', String(discount));
+    localStorage.setItem('lgc_pos_discount_type', discountType);
+  }, [cart, selectedCustomer, discount, discountType]);
 
   useEffect(() => { loadBaseData(); }, []);
 
@@ -82,7 +107,6 @@ export const POS: React.FC = () => {
         return;
       }
       
-      // Nếu là quà tri ân đổi điểm, kiểm tra điểm trước khi tăng SL
       if (item.isGift && selectedCustomer) {
         const totalPointsRequired = cart.reduce((sum, i) => sum + (i.isGift ? (i.pointsRequired || 0) * i.quantity : 0), 0) + (item.pointsRequired || 0);
         if (totalPointsRequired > selectedCustomer.loyaltyPoints) {
@@ -108,8 +132,6 @@ export const POS: React.FC = () => {
     const newCart = [...cart];
     const item = newCart[index];
     
-    // Lưu ý: Chỉ áp dụng toggle cho sản phẩm thường thành Quà KM (0đ)
-    // Quà tri ân (đổi điểm) phải thêm từ Modal quà tặng chuyên biệt
     if (item.isGift) {
         showToast("Quà tri ân đổi điểm không thể chuyển thành hàng bán", "info");
         return;
@@ -117,7 +139,7 @@ export const POS: React.FC = () => {
 
     const isNowPromoGift = item.appliedPrice !== 0;
     item.appliedPrice = isNowPromoGift ? 0 : item.price;
-    item.isGift = false; // Luôn là false vì đây là quà khuyến mãi 0đ, không phải quà đổi điểm
+    item.isGift = false; 
     setCart(newCart);
     showToast(isNowPromoGift ? "Đã chuyển thành Quà khuyến mãi" : "Đã khôi phục giá bán", "info");
   };
@@ -127,7 +149,6 @@ export const POS: React.FC = () => {
       showToast("Sản phẩm đã hết hàng", "error");
       return;
     }
-    // Tìm SP thường cùng ID (không phải quà tri ân)
     const existingIndex = cart.findIndex(item => item.id === product.id && !item.isGift);
     if (existingIndex > -1) {
       updateCartQuantity(existingIndex, 1);
@@ -169,7 +190,7 @@ export const POS: React.FC = () => {
             hasSerial: linkedProduct?.hasSerial || false,
             vatRate: 0,
             quantity: 1,
-            isGift: true, // ĐÁNH DẤU LÀ QUÀ TRI ÂN ĐỔI ĐIỂM
+            isGift: true, 
             serials: [],
             vatAmount: 0,
             pointsRequired: gift.pointsRequired,
@@ -193,6 +214,16 @@ export const POS: React.FC = () => {
   }, [cart, discount, discountType, settings]);
 
   const formatVND = (v: number) => new Intl.NumberFormat('vi-VN').format(v);
+
+  const clearTemporaryData = () => {
+    setCart([]);
+    setDiscount(0);
+    setSelectedCustomer(null);
+    localStorage.removeItem('lgc_pos_cart');
+    localStorage.removeItem('lgc_pos_customer');
+    localStorage.removeItem('lgc_pos_discount');
+    localStorage.removeItem('lgc_pos_discount_type');
+  };
 
   const handleCheckout = async () => {
     if (cart.length === 0 || isProcessing) return;
@@ -236,9 +267,7 @@ export const POS: React.FC = () => {
       };
       const savedOrder = await StorageService.saveOrder(orderData);
       printInvoice(savedOrder);
-      setCart([]);
-      setDiscount(0);
-      setSelectedCustomer(null);
+      clearTemporaryData();
       showToast("Thanh toán thành công", "success");
       loadBaseData();
     } catch (error: any) {

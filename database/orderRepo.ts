@@ -1,18 +1,7 @@
 
-// Fix: Use named imports for firestore functions to resolve access errors
-import { 
-  query, 
-  collection, 
-  orderBy, 
-  getDocs, 
-  where, 
-  runTransaction, 
-  doc, 
-  getDoc, 
-  deleteDoc, 
-  updateDoc,
-  setDoc
-} from "firebase/firestore";
+// Fix: Use namespace import for firestore to handle environment-specific named export issues
+import * as firestore from "firebase/firestore";
+const { query, collection, orderBy, getDocs, where, runTransaction, doc, getDoc, deleteDoc, updateDoc, setDoc } = firestore as any;
 import { db } from "./config";
 import { COLLECTIONS } from "./collections";
 import { mapDoc, withTimestamp, getCurrentUserSync, cleanupData } from "./base";
@@ -21,14 +10,12 @@ import { SystemRepo } from "./systemRepo";
 
 export const OrderRepo = {
   getOrders: async (): Promise<Order[]> => {
-    // Fix: Use direct named exports
     const q = query(collection(db, COLLECTIONS.ORDERS), orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(mapDoc) as Order[];
   },
 
   getOrdersByCustomer: async (customerId: string): Promise<Order[]> => {
-    // Fix: Use direct named exports
     const q = query(
       collection(db, COLLECTIONS.ORDERS), 
       where("customerId", "==", customerId),
@@ -39,14 +26,12 @@ export const OrderRepo = {
   },
 
   getTransactions: async (): Promise<InventoryTransaction[]> => {
-    // Fix: Use direct named exports
     const q = query(collection(db, COLLECTIONS.TRANSACTIONS), orderBy('timestamp', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(mapDoc) as InventoryTransaction[];
   },
 
   getWarranties: async (): Promise<WarrantyItem[]> => {
-    // Fix: Use direct named exports
     const q = query(collection(db, COLLECTIONS.WARRANTIES), orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(mapDoc) as WarrantyItem[];
@@ -57,23 +42,22 @@ export const OrderRepo = {
     const now = Date.now();
     const cleanSerial = warranty.serialNumber.trim().toUpperCase();
 
-    // Fix: Use direct named exports for query, runTransaction, etc.
-    return await runTransaction(db, async (transaction) => {
-      const serialQuery = query(
-        collection(db, COLLECTIONS.WARRANTIES),
-        where("serialNumber", "==", cleanSerial),
-        where("isActive", "==", true)
-      );
-      const serialSnap = await getDocs(serialQuery);
-      const duplicate = serialSnap.docs.find(d => d.id !== warranty.id);
-      
-      if (duplicate) {
-        const dData = duplicate.data();
-        if (dData.status !== 'void' && dData.status !== 'expired') {
-            throw new Error(`Số Serial/IMEI "${cleanSerial}" đã tồn tại cho khách hàng "${dData.customerName}".`);
-        }
+    const serialQuery = query(
+      collection(db, COLLECTIONS.WARRANTIES),
+      where("serialNumber", "==", cleanSerial),
+      where("isActive", "==", true)
+    );
+    const serialSnap = await getDocs(serialQuery);
+    const duplicate = serialSnap.docs.find(d => d.id !== warranty.id);
+    
+    if (duplicate) {
+      const dData = duplicate.data();
+      if (dData.status !== 'void' && dData.status !== 'expired') {
+          throw new Error(`Số Serial/IMEI "${cleanSerial}" đã tồn tại cho khách hàng "${dData.customerName}".`);
       }
+    }
 
+    return await runTransaction(db, async (transaction: any) => {
       const warrantyRef = doc(db, COLLECTIONS.WARRANTIES, warranty.id);
       const oldSnap = await transaction.get(warrantyRef);
       
@@ -113,7 +97,6 @@ export const OrderRepo = {
   },
 
   deleteWarranty: async (id: string) => {
-    // Fix: Use direct named exports
     const ref = doc(db, COLLECTIONS.WARRANTIES, id);
     const snap = await getDoc(ref);
     if (!snap.exists()) return;
@@ -127,8 +110,7 @@ export const OrderRepo = {
     const currentUser = getCurrentUserSync();
     const year = new Date().getFullYear().toString().slice(-2);
 
-    // Fix: Use direct named exports for query, doc, transaction, etc.
-    return await runTransaction(db, async (transaction) => {
+    return await runTransaction(db, async (transaction: any) => {
       const counterRef = doc(db, 'counters', 'invoice');
       const counterSnap = await transaction.get(counterRef);
 
@@ -142,8 +124,10 @@ export const OrderRepo = {
       }
 
       let customerRef = null;
+      let customerSnap = null;
       if (order.customerId && order.customerId !== 'walk-in') {
           customerRef = doc(db, COLLECTIONS.CUSTOMERS, order.customerId);
+          customerSnap = await transaction.get(customerRef);
       }
 
       let nextNum = 1;
@@ -168,7 +152,7 @@ export const OrderRepo = {
           const txId = `TX_${now}_${item.id}_${index}`;
           transaction.set(doc(db, COLLECTIONS.TRANSACTIONS, txId), cleanupData({
             id: txId, code: finalOrderCode, productId: item.id, productName: item.name, sku: pData.sku, 
-            type: 'sale', quantity: -item.quantity, balance: newStock, oldStock: pData.stock, newStock, 
+            type: 'sale', quantity: -item.quantity, balance: newStock, oldStock: pData.stock, 
             timestamp: now, unitPrice: item.appliedPrice ?? item.price, referenceId: order.id, 
             supplierName: order.customerName, receiver: order.customerName, note: `Bán hàng đơn ${finalOrderCode}`, 
             createdAt: now, updatedAt: now, isActive: true
@@ -192,18 +176,15 @@ export const OrderRepo = {
           return { ...item, costPrice: pData.costPrice || 0, type: pData.type };
       });
 
-      if (customerRef) {
-          const cSnap = await transaction.get(customerRef);
-          if (cSnap.exists()) {
-              const cData = cSnap.data() as Customer;
-              const earnedPoints = Math.floor(order.total / 100000); 
-              transaction.update(customerRef, { 
-                loyaltyPoints: (cData.loyaltyPoints || 0) + earnedPoints, 
-                totalSpent: (cData.totalSpent || 0) + order.total,
-                lastPurchaseDate: now, 
-                updatedAt: now 
-              });
-          }
+      if (customerRef && customerSnap && customerSnap.exists()) {
+          const cData = customerSnap.data() as Customer;
+          const earnedPoints = Math.floor(order.total / 100000); 
+          transaction.update(customerRef, { 
+            loyaltyPoints: (cData.loyaltyPoints || 0) + earnedPoints, 
+            totalSpent: (cData.totalSpent || 0) + order.total,
+            lastPurchaseDate: now, 
+            updatedAt: now 
+          });
       }
 
       transaction.set(counterRef, { lastNumber: nextNum, year: year }, { merge: true });
@@ -215,8 +196,13 @@ export const OrderRepo = {
   },
 
   updateOrderMetadata: async (orderId: string, updates: { createdAt: number, staffName: string, note: string }) => {
-      // Fix: Use named functions for Firestore modular syntax
-      return await runTransaction(db, async (transaction) => {
+      const txQuery = query(collection(db, COLLECTIONS.TRANSACTIONS), where("referenceId", "==", orderId));
+      const txSnaps = await getDocs(txQuery);
+      
+      const warrantyQuery = query(collection(db, COLLECTIONS.WARRANTIES), where("orderId", "==", orderId));
+      const warrantySnaps = await getDocs(warrantyQuery);
+
+      return await runTransaction(db, async (transaction: any) => {
           const orderRef = doc(db, COLLECTIONS.ORDERS, orderId);
           const orderSnap = await transaction.get(orderRef);
           if (!orderSnap.exists()) throw new Error("Đơn hàng không tồn tại");
@@ -227,8 +213,6 @@ export const OrderRepo = {
               updatedAt: Date.now()
           });
 
-          const txQuery = query(collection(db, COLLECTIONS.TRANSACTIONS), where("referenceId", "==", orderId));
-          const txSnaps = await getDocs(txQuery);
           txSnaps.forEach(t => {
               transaction.update(t.ref, { 
                   timestamp: updates.createdAt,
@@ -236,8 +220,6 @@ export const OrderRepo = {
               });
           });
 
-          const warrantyQuery = query(collection(db, COLLECTIONS.WARRANTIES), where("orderId", "==", orderId));
-          const warrantySnaps = await getDocs(warrantyQuery);
           warrantySnaps.forEach(w => {
               const wData = w.data();
               const newExpiry = new Date(updates.createdAt);
@@ -256,21 +238,20 @@ export const OrderRepo = {
   },
 
   deleteOrderPermanently: async (orderId: string) => {
-      // Fix: Use direct named exports
-      return await runTransaction(db, async (transaction) => {
+      const txQuery = query(collection(db, COLLECTIONS.TRANSACTIONS), where("referenceId", "==", orderId));
+      const txSnaps = await getDocs(txQuery);
+
+      const warrantyQuery = query(collection(db, COLLECTIONS.WARRANTIES), where("orderId", "==", orderId));
+      const warrantySnaps = await getDocs(warrantyQuery);
+
+      return await runTransaction(db, async (transaction: any) => {
           const orderRef = doc(db, COLLECTIONS.ORDERS, orderId);
           const orderSnap = await transaction.get(orderRef);
           if (!orderSnap.exists()) throw new Error("Đơn hàng không tồn tại");
           const orderData = orderSnap.data() as Order;
 
           transaction.delete(orderRef);
-
-          const txQuery = query(collection(db, COLLECTIONS.TRANSACTIONS), where("referenceId", "==", orderId));
-          const txSnaps = await getDocs(txQuery);
           txSnaps.forEach(t => transaction.delete(t.ref));
-
-          const warrantyQuery = query(collection(db, COLLECTIONS.WARRANTIES), where("orderId", "==", orderId));
-          const warrantySnaps = await getDocs(warrantyQuery);
           warrantySnaps.forEach(w => transaction.delete(w.ref));
 
           await SystemRepo.logAction('ADMIN_DELETE_ORDER', `Xóa vĩnh viễn đơn hàng ${orderData.code}`);
@@ -280,57 +261,68 @@ export const OrderRepo = {
 
   cancelOrder: async (orderId: string) => {
     const now = Date.now();
-    // Fix: Use direct named exports
-    return await runTransaction(db, async (transaction) => {
+    
+    const warrantyQueryAll = query(collection(db, COLLECTIONS.WARRANTIES), where("orderId", "==", orderId));
+    const warrantySnapsAll = await getDocs(warrantyQueryAll);
+
+    return await runTransaction(db, async (transaction: any) => {
       const orderRef = doc(db, COLLECTIONS.ORDERS, orderId);
       const orderSnap = await transaction.get(orderRef);
       if (!orderSnap.exists()) throw new Error("Đơn hàng không tồn tại.");
       const orderData = orderSnap.data() as Order;
       if (orderData.status === 'cancelled') return true;
 
-      for (const [index, item] of orderData.items.entries()) {
+      const productSnapsMap: Record<string, Product> = {};
+      for (const item of orderData.items) {
           const pRef = doc(db, COLLECTIONS.PRODUCTS, item.id);
           const pSnap = await transaction.get(pRef);
-          
           if (pSnap.exists()) {
-              const pData = pSnap.data() as Product;
+              productSnapsMap[item.id] = pSnap.data() as Product;
+          }
+      }
+
+      let customerRef = null;
+      let customerSnap = null;
+      if (orderData.customerId && orderData.customerId !== 'walk-in') {
+          customerRef = doc(db, COLLECTIONS.CUSTOMERS, orderData.customerId);
+          customerSnap = await transaction.get(customerRef);
+      }
+
+      for (const [index, item] of orderData.items.entries()) {
+          const pData = productSnapsMap[item.id];
+          if (pData) {
+              const pRef = doc(db, COLLECTIONS.PRODUCTS, item.id);
               const restoredStock = (pData.stock || 0) + item.quantity;
               transaction.update(pRef, { stock: restoredStock, updatedAt: now });
               
               const txRetId = `TX_RET_${orderData.code}_${item.id}_${index}`;
               transaction.set(doc(db, COLLECTIONS.TRANSACTIONS, txRetId), cleanupData({
                   id: txRetId, code: `RET-${orderData.code}`, productId: item.id, productName: item.name, sku: item.sku || '', 
-                  type: 'return', quantity: item.quantity, balance: restoredStock, oldStock: pData.stock, newStock: restoredStock, 
+                  type: 'return', quantity: item.quantity, balance: restoredStock, oldStock: pData.stock,
                   timestamp: now, unitPrice: item.appliedPrice ?? item.price, referenceId: orderData.id, 
                   supplierName: orderData.customerName, receiver: orderData.customerName,
                   note: `Hoàn kho đơn ${orderData.code}`, createdAt: now, updatedAt: now, isActive: true
               }));
           }
-
-          const warrantyQuery = query(collection(db, COLLECTIONS.WARRANTIES), where("orderId", "==", orderData.id), where("productId", "==", item.id));
-          const warrantySnap = await getDocs(warrantyQuery);
-          warrantySnap.forEach(wDoc => {
-              const wData = wDoc.data() as WarrantyItem;
-              transaction.update(wDoc.ref, { 
-                status: 'void', 
-                updatedAt: now,
-                history: [...(wData.history || []), { date: now, action: 'Vô hiệu hóa', note: `Hủy theo đơn ${orderData.code}` }]
-              });
-          });
       }
 
-      if (orderData.customerId && orderData.customerId !== 'walk-in') {
-          const cRef = doc(db, COLLECTIONS.CUSTOMERS, orderData.customerId);
-          const cSnap = await transaction.get(cRef);
-          if (cSnap.exists()) {
-              const cData = cSnap.data() as Customer;
-              const pointsEarned = Math.floor(orderData.total / 100000);
-              transaction.update(cRef, { 
-                  loyaltyPoints: Math.max(0, (cData.loyaltyPoints || 0) - pointsEarned), 
-                  totalSpent: Math.max(0, (cData.totalSpent || 0) - orderData.total), 
-                  updatedAt: now 
-              });
-          }
+      warrantySnapsAll.forEach(wDoc => {
+          const wData = wDoc.data() as WarrantyItem;
+          transaction.update(wDoc.ref, { 
+            status: 'void', 
+            updatedAt: now,
+            history: [...(wData.history || []), { date: now, action: 'Vô hiệu hóa', note: `Hủy theo đơn ${orderData.code}` }]
+          });
+      });
+
+      if (customerRef && customerSnap && customerSnap.exists()) {
+          const cData = customerSnap.data() as Customer;
+          const pointsEarned = Math.floor(orderData.total / 100000);
+          transaction.update(customerRef, { 
+              loyaltyPoints: Math.max(0, (cData.loyaltyPoints || 0) - pointsEarned), 
+              totalSpent: Math.max(0, (cData.totalSpent || 0) - orderData.total), 
+              updatedAt: now 
+          });
       }
 
       transaction.update(orderRef, { status: 'cancelled', updatedAt: now });

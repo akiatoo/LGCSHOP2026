@@ -1,5 +1,7 @@
 
-import { collection, getDocs, doc, setDoc, query, where, orderBy, deleteDoc } from "firebase/firestore";
+// Fix: Use namespace import for firestore to bypass named export errors in some build environments
+import * as firestore from "firebase/firestore";
+const { collection, getDocs, doc, setDoc, query, where, orderBy, deleteDoc } = firestore as any;
 import { db } from "./config";
 import { COLLECTIONS } from "./collections";
 import { mapDoc, withTimestamp } from "./base";

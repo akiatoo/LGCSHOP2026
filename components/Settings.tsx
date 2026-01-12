@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { StorageService } from '../services/storageService';
 import { User, UserRole, PrintTemplate, SystemSettings, View, LayoutMode, UIConfig } from '../types';
@@ -95,12 +96,10 @@ export const Settings: React.FC = () => {
     { id: 'staff', label: 'Nhân viên', color: 'bg-slate-500', icon: UserIcon, desc: 'Thực hiện bán hàng & dịch vụ' },
   ];
 
-  const PackageIcon = Box;
-
   const PERMISSION_LIST = [
     { id: 'pos' as View, label: 'Bán hàng (POS)', icon: Zap, desc: 'Lập hóa đơn và thu ngân tại quầy' },
     { id: 'orders' as View, label: 'Quản lý Đơn hàng', icon: FileText, desc: 'Tra cứu, in lại và hủy đơn hàng' },
-    { id: 'inventory' as View, label: 'Kho hàng & Nhập xuất', icon: PackageIcon, desc: 'Quản lý tồn kho, nhập hàng NCC' },
+    { id: 'inventory' as View, label: 'Kho hàng & Nhập xuất', icon: Box, desc: 'Quản lý tồn kho, nhập hàng NCC' },
     { id: 'materials' as View, label: 'Vật tư sửa chữa', icon: Wrench, desc: 'Linh kiện thay thế và giá vốn dịch vụ' },
     { id: 'customers' as View, label: 'Hồ sơ Khách hàng', icon: Users, desc: 'Quản lý thông tin và điểm tích lũy' },
     { id: 'suppliers' as View, label: 'Nhà cung cấp', icon: Building2, desc: 'Quản lý đối tác cung ứng' },
@@ -113,7 +112,7 @@ export const Settings: React.FC = () => {
 
   const configMenu = [
     { id: 'company', label: 'Thông tin đơn vị', icon: Building2, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { id: 'invoice_options', label: 'Tùy chọn bản in', icon: Receipt, color: 'text-sky-600', bg: 'bg-sky-50' },
+    { id: 'invoice_options', label: 'Tùy chọn hóa đơn', icon: Receipt, color: 'text-sky-600', bg: 'bg-sky-50' },
     { id: 'finance', label: 'Thuế & Tài chính', icon: Landmark, color: 'text-amber-600', bg: 'bg-amber-50' },
     { id: 'storage', label: 'Lưu trữ & Bảo mật', icon: CloudCog, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { id: 'system', label: 'Bố cục hệ thống', icon: MonitorSmartphone, color: 'text-slate-600', bg: 'bg-slate-50' },
@@ -122,9 +121,7 @@ export const Settings: React.FC = () => {
     { id: 'global_inputs', label: 'Ô nhập toàn cục', icon: MousePointer2, color: 'text-indigo-600', bg: 'bg-indigo-50' },
   ];
 
-  useEffect(() => {
-    loadData();
-  }, [activeTab]);
+  useEffect(() => { loadData(); }, [activeTab]);
 
   const loadData = async () => {
     setIsProcessing(true);
@@ -132,15 +129,12 @@ export const Settings: React.FC = () => {
         if (activeTab === 'users') {
             const u = await StorageService.getUsers();
             setUsers(u.sort((a, b) => b.createdAt - a.createdAt));
-        }
-        if (activeTab === 'templates') {
+        } else if (activeTab === 'templates') {
             const t = await StorageService.getTemplates();
             setTemplates(t);
         }
-        if (activeTab === 'config' || activeTab === 'permissions' || activeTab === 'data') {
-            const s = await StorageService.getSettings();
-            setSettings(s);
-        }
+        const s = await StorageService.getSettings();
+        setSettings(s);
     } catch (e) {
         console.error("Load settings error:", e);
     } finally {
@@ -179,15 +173,10 @@ export const Settings: React.FC = () => {
 
   const handleDeleteUser = async (user: User) => {
     const currentUser = StorageService.getCurrentUserSync();
-    if (user.id === currentUser?.id) {
-      alert("Bạn không thể tự xóa tài khoản của chính mình!");
-      return;
-    }
-    if (user.id === 'admin_root') {
-      alert("Không thể xóa tài khoản Quản trị viên gốc của hệ thống!");
-      return;
-    }
-    if (confirm(`Xác nhận xóa tài khoản "${user.fullName}"? Mọi quyền truy cập của nhân viên này sẽ bị chấm dứt.`)) {
+    if (user.id === currentUser?.id) return alert("Bạn không thể tự xóa tài khoản của chính mình!");
+    if (user.id === 'admin_root') return alert("Không thể xóa tài khoản Quản trị viên gốc!");
+    
+    if (confirm(`Xác nhận xóa tài khoản "${user.fullName}"?`)) {
       setIsProcessing(true);
       try {
         await StorageService.deleteUser(user.id);
@@ -200,173 +189,45 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const togglePermission = (roleId: UserRole, viewId: View) => {
-    if (!settings || roleId === 'admin') return;
-    
-    // Logic thắt chặt: Không cho phép gỡ quyền 'settings' hoặc 'audit' nếu là Manager để tránh tự khóa mình
-    if (roleId === 'manager' && (viewId === 'settings' || viewId === 'audit')) {
-        const currentPerms = settings.rolePermissions[roleId] || [];
-        if (currentPerms.includes(viewId)) {
-            alert("Vai trò Quản lý bắt buộc phải có quyền Cấu hình và Nhật ký để vận hành.");
-            return;
-        }
-    }
-
-    const currentPerms = settings.rolePermissions[roleId] || [];
-    const newPerms = currentPerms.includes(viewId)
-      ? currentPerms.filter(v => v !== viewId)
-      : [...currentPerms, viewId];
-    
-    setSettings({
-      ...settings,
-      rolePermissions: {
-        ...settings.rolePermissions,
-        [roleId]: newPerms
-      }
-    });
-  };
-
-  const handleEditTemplate = (t: PrintTemplate) => {
-    setEditingTemplate(t);
-    setTemplateContent(t.content || '');
-    setIsTemplateModalOpen(true);
-  };
-
-  const handleSaveTemplate = async () => {
-    if (!editingTemplate || !templateContent.trim()) {
-        alert("Nội dung mẫu in không được để trống.");
-        return;
-    }
-    setIsProcessing(true);
-    try {
-        await StorageService.saveTemplate({
-            ...editingTemplate,
-            content: templateContent,
-            updatedAt: Date.now()
-        });
-        await loadData();
-        setIsTemplateModalOpen(false);
-    } finally {
-        setIsProcessing(false);
-    }
-  };
-
-  const handleResetTemplate = () => {
-    if (!editingTemplate) return;
-    if (confirm("CẢNH BÁO: Thao tác này sẽ xóa sạch mã hiện tại và thay thế bằng mẫu chuẩn của hệ thống. Bạn có chắc chắn?")) {
-        let def = '';
-        const type = editingTemplate.type.toLowerCase().trim();
-        
-        if (type === 'invoice') def = DEFAULT_INVOICE_TEMPLATE;
-        else if (type === 'import') def = DEFAULT_IMPORT_TEMPLATE;
-        else if (type === 'export') def = DEFAULT_EXPORT_TEMPLATE;
-        else if (type === 'report') def = DEFAULT_NXT_TEMPLATE;
-        
-        if (def) {
-            setTemplateContent(def);
-            alert("Đã tải xong mã mặc định. Đừng quên nhấn 'LƯU THAY ĐỔI' để áp dụng!");
-        } else {
-            alert(`Lỗi: Không tìm thấy mã mặc định cho loại phiếu: "${type}"`);
-        }
-    }
-  };
-
-  const handlePreview = (type: string, currentContent?: string) => {
-    printPreview(type, currentContent);
-  };
-
-  const syncThemeToStyles = (ui: UIConfig) => {
-    const root = document.documentElement;
-    root.style.setProperty('--input-height', `${ui.inputHeight}px`);
-    root.style.setProperty('--input-border-width', `${ui.inputBorderWidth}px`);
-    root.style.setProperty('--input-border-color', ui.inputBorderColor);
-    root.style.setProperty('--input-rounding', `${ui.inputRounding}px`);
-    root.style.setProperty('--input-focus-color', ui.inputFocusColor);
-    root.style.setProperty('--input-padding-x', `${ui.inputPaddingX}px`);
-    root.style.setProperty('--input-font-size', `${ui.inputFontSize}px`);
-    
-    root.style.setProperty('--modal-border-width', `${ui.modalBorderWidth}px`);
-    root.style.setProperty('--modal-rounding', `${ui.modalRounding}px`);
-    root.style.setProperty('--modal-border-color', ui.modalBorderColor);
-    root.style.setProperty('--modal-width', `${ui.modalWidth}px`);
-    root.style.setProperty('--modal-max-height', `${ui.modalMaxHeight}vh`);
-    root.style.setProperty('--modal-label-size', `${ui.modalLabelFontSize}px`);
-    root.style.setProperty('--modal-label-color', ui.modalLabelColor);
-    root.style.setProperty('--modal-grid-opacity', `${ui.gridOpacity / 100}`);
-    
-    root.style.setProperty('--modal-input-height', `${ui.modalInputHeight}px`);
-    root.style.setProperty('--modal-input-border-width', `${ui.modalInputBorderWidth}px`);
-    root.style.setProperty('--modal-input-rounding', `${ui.modalInputRounding}px`);
-    root.style.setProperty('--modal-input-border-color', ui.modalInputBorderColor);
-    root.style.setProperty('--modal-input-text-color', ui.modalInputTextColor);
-    root.style.setProperty('--modal-input-padding-x', `${ui.modalInputPaddingX}px`);
-    root.style.setProperty('--modal-input-font-size', `${ui.modalInputFontSize}px`);
-    root.style.setProperty('--modal-input-gap', `${ui.modalInputGap}px`);
-
-    root.style.setProperty('--sys-border-width', `${ui.sysBorderWidth}px`);
-    root.style.setProperty('--sys-rounding', `${ui.sysRounding}px`);
-    root.style.setProperty('--sys-border-color', ui.sysBorderColor);
-    root.style.setProperty('--sys-sidebar-width', `${ui.sysSidebarWidth}px`);
-    root.style.setProperty('--sys-header-size', `${ui.sysHeaderFontSize}px`);
-  };
-
   const saveConfig = async () => {
       if (!settings) return;
-
-      // 1. Logic Validation nghiêm ngặt cho tài chính & pháp lý
-      if (activeConfigSection === 'finance') {
-          if (settings.defaultVatRate < 0 || settings.defaultVatRate > 100) {
-              alert("Thuế suất VAT phải nằm trong khoảng từ 0% đến 100%.");
-              return;
-          }
-          if (!settings.currencySymbol.trim()) {
-              alert("Ký hiệu tiền tệ không được để trống.");
-              return;
-          }
-      }
-
-      if (activeConfigSection === 'company') {
-          if (!settings.companyInfo?.name?.trim()) {
-              alert("Tên đơn vị là thông tin bắt buộc trên hóa đơn.");
-              return;
-          }
-      }
-
       setIsProcessing(true);
       try {
           await StorageService.saveSettings(settings);
-          // 2. Đồng bộ UI thời gian thực cho các thiết lập giao diện
-          if (activeTab === 'config' && (activeConfigSection.includes('modal') || activeConfigSection.includes('input') || activeConfigSection === 'system')) {
-              syncThemeToStyles(settings.uiConfig);
-          }
           alert("Đã lưu cấu hình thành công!");
-          // Chỉ reload nếu đổi cấu hình hệ thống sâu (vai trò/lưu trữ)
-          if (activeConfigSection === 'storage' || activeTab === 'permissions') window.location.reload();
       } finally { setIsProcessing(false); }
   };
 
   const updateUI = (updates: Partial<UIConfig>) => {
     if (!settings) return;
-    setSettings({
-      ...settings,
-      uiConfig: { ...settings.uiConfig, ...updates }
-    });
+    setSettings({ ...settings, uiConfig: { ...settings.uiConfig, ...updates } });
   };
 
-  const updateCompanyInfo = (updates: any) => {
-      if (!settings) return;
-      setSettings({
-          ...settings,
-          companyInfo: { ...(settings.companyInfo || {}), ...updates }
-      });
+  const togglePermission = (roleId: UserRole, viewId: View) => {
+    if (!settings || roleId === 'admin') return;
+    const currentPerms = settings.rolePermissions[roleId] || [];
+    const newPerms = currentPerms.includes(viewId) ? currentPerms.filter(v => v !== viewId) : [...currentPerms, viewId];
+    setSettings({ ...settings, rolePermissions: { ...settings.rolePermissions, [roleId]: newPerms } });
   };
 
-  const updateInvoiceOptions = (updates: any) => {
-      if (!settings) return;
-      setSettings({
-          ...settings,
-          invoiceOptions: { ...(settings.invoiceOptions || { showCompanyInfo: true, showCustomerInfo: true, showQRCode: true, showSignatures: true, showStaffName: true }), ...updates }
-      });
+  const handlePreview = (type: string, contentOverride?: string) => {
+      printPreview(type, contentOverride);
+  };
+
+  const handleEditTemplate = (t: PrintTemplate) => {
+      setEditingTemplate(t);
+      setTemplateContent(t.content || '');
+      setIsTemplateModalOpen(true);
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!editingTemplate) return;
+    setIsProcessing(true);
+    try {
+        await StorageService.saveTemplate({ ...editingTemplate, content: templateContent, updatedAt: Date.now() });
+        await loadData();
+        setIsTemplateModalOpen(false);
+    } finally { setIsProcessing(false); }
   };
 
   const handleBackup = async () => {
@@ -375,61 +236,16 @@ export const Settings: React.FC = () => {
       finally { setIsProcessing(false); }
   };
 
-  const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      if (!confirm("CẢNH BÁO: Việc khôi phục sẽ ghi đè toàn bộ dữ liệu hiện tại. Bạn chắc chắn muốn tiếp tục?")) return;
-      
-      setIsProcessing(true);
-      try {
-          const text = await file.text();
-          const data = JSON.parse(text);
-          await StorageService.importAllData(data);
-          alert("Đã khôi phục dữ liệu thành công! Hệ thống sẽ tải lại.");
-          window.location.reload();
-      } catch (err) {
-          alert("Lỗi khi đọc file backup. Vui lòng kiểm tra lại định dạng.");
-      } finally { setIsProcessing(false); }
-  };
-
-  const handleOpenRecoveryModal = (full: boolean) => {
-      setResetLevel(full ? 'full' : 'partial');
-      setRecoveryCodeInput('');
-      setRecoveryError(false);
-      setIsRecoveryModalOpen(true);
-  };
-
-  const executeFactoryReset = async () => {
-      if (recoveryCodeInput.trim().toUpperCase() !== 'LGC2026') {
-          setRecoveryError(true);
-          return;
-      }
-      
-      const full = resetLevel === 'full';
-      setIsProcessing(true);
-      try {
-          // Logic dọn dẹp an toàn: Xóa tuần tự để tránh lỗi ràng buộc
-          await StorageService.factoryReset(full);
-          alert("Dọn dẹp hệ thống thành công. Phiên làm việc sẽ kết thúc.");
-          window.location.reload();
-      } catch (e) {
-          alert("Lỗi thực thi dọn dẹp.");
-      } finally { 
-          setIsProcessing(false); 
-          setIsRecoveryModalOpen(false);
-      }
-  };
-
   const filteredUsers = users.filter(u => 
       u.fullName.toLowerCase().includes(searchTerm.toLowerCase()) || 
       u.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const templateTypes = [
-    { id: 'invoice', label: 'Hóa đơn bán hàng', icon: Receipt, color: 'text-sky-600', bg: 'bg-sky-50', desc: 'Sử dụng cho khách lẻ và khách sỉ.' },
-    { id: 'import', label: 'Phiếu nhập kho', icon: ArrowDownToLine, color: 'text-emerald-600', bg: 'bg-emerald-50', desc: 'Dùng khi nhập hàng linh kiện sửa chữa.' },
-    { id: 'export', label: 'Phiếu xuất kho', icon: ArrowUpFromLine, color: 'text-orange-600', bg: 'bg-orange-50', desc: 'Dùng cho xuất trả NCC hoặc xuất dùng nội bộ.' },
-    { id: 'report', label: 'Báo cáo NXT', icon: BarChart3, color: 'text-purple-600', bg: 'bg-purple-50', desc: 'Báo cáo Nhập - Xuất - Tồn hàng tháng.' },
+    { id: 'invoice', label: 'Hóa đơn bán hàng', icon: Receipt, color: 'text-sky-600', bg: 'bg-sky-50', desc: 'Sử dụng cho bán lẻ và sỉ.' },
+    { id: 'import', label: 'Phiếu nhập kho', icon: ArrowDownToLine, color: 'text-emerald-600', bg: 'bg-emerald-50', desc: 'Dùng cho nhập linh kiện NCC.' },
+    { id: 'export', label: 'Phiếu xuất kho', icon: ArrowUpFromLine, color: 'text-orange-600', bg: 'bg-orange-50', desc: 'Dùng xuất dùng hoặc trả hàng.' },
+    { id: 'report', label: 'Báo cáo NXT', icon: BarChart3, color: 'text-purple-600', bg: 'bg-purple-50', desc: 'Báo cáo Nhập-Xuất-Tồn định kỳ.' },
   ];
 
   return (
@@ -455,14 +271,14 @@ export const Settings: React.FC = () => {
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                         <input 
                             type="text" 
-                            placeholder="Tìm tên, tài khoản..." 
+                            placeholder="Tìm nhân viên..." 
                             value={searchTerm} 
                             onChange={(e) => setSearchTerm(e.target.value)} 
-                            className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold focus:bg-white focus:border-primary-500 transition-all outline-none"
+                            className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold focus:bg-white focus:border-primary-500 transition-all outline-none placeholder:text-slate-300"
                         />
                     </div>
                     <button 
-                        onClick={() => { setEditingUser(null); setUserForm({ role: 'staff', isActive: true, username: '', fullName: '', password: '', phone: '', email: '' }); setIsUserModalOpen(true); }} 
+                        onClick={() => { setEditingUser(null); setUserForm({ role: 'staff', isActive: true }); setIsUserModalOpen(true); }} 
                         className="p-2.5 bg-primary-600 text-white rounded-xl shadow-md hover:bg-primary-700 transition-all active:scale-95 flex items-center gap-2 px-8"
                     >
                         <Plus className="w-4 h-4" /> <span className="text-[10px] font-black uppercase tracking-widest">Thêm nhân viên</span>
@@ -477,7 +293,7 @@ export const Settings: React.FC = () => {
                     className="p-2.5 bg-primary-600 text-white rounded-xl shadow-md hover:bg-primary-700 transition-all active:scale-95 flex items-center gap-2 px-10"
                 >
                     {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} 
-                    <span className="text-[10px] font-black uppercase tracking-widest">Lưu thay đổi</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest">Lưu cấu hình</span>
                 </button>
             )}
         </div>
@@ -487,7 +303,7 @@ export const Settings: React.FC = () => {
           {activeTab === 'users' && (
                 <TableContainer className="flex-1 shadow-sm" rounded="rounded-2xl">
                     <TableHead>
-                        <TableHeaderCell className="w-[30%]">Họ tên / Tài khoản</TableHeaderCell>
+                        <TableHeaderCell className="w-[35%]">Nhân viên / Tài khoản</TableHeaderCell>
                         <TableHeaderCell>Vai trò</TableHeaderCell>
                         <TableHeaderCell align="center">Trạng thái</TableHeaderCell>
                         <TableHeaderCell align="right" className="w-[15%]"></TableHeaderCell>
@@ -507,12 +323,12 @@ export const Settings: React.FC = () => {
                                     </span>
                                 </TableCell>
                                 <TableCell align="center">
-                                    <Badge variant={u.isActive ? 'success' : 'danger'} className="text-[10px] py-0.5 px-3">{u.isActive ? 'ĐANG LÀM' : 'ĐÃ KHÓA'}</Badge>
+                                    <Badge variant={u.isActive ? 'success' : 'danger'} className="text-[10px] py-0.5 px-3">{u.isActive ? 'HOẠT ĐỘNG' : 'TẠM KHÓA'}</Badge>
                                 </TableCell>
                                 <TableCell align="right">
                                     <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all transform group-hover:translate-x-[-10px]">
-                                        <button onClick={() => { setEditingUser(u); setUserForm(u); setIsUserModalOpen(true); }} className="p-2.5 text-slate-400 hover:text-primary-600 bg-white border border-slate-200 rounded-xl shadow-sm"><Edit2 className="w-4 h-4"/></button>
-                                        <button onClick={() => handleDeleteUser(u)} className="p-2.5 text-slate-400 hover:text-rose-600 bg-white border border-slate-200 rounded-xl shadow-sm"><Trash2 className="w-4 h-4"/></button>
+                                        <button onClick={() => { setEditingUser(u); setUserForm(u); setIsUserModalOpen(true); }} className="p-2.5 text-slate-400 hover:text-primary-600 bg-white border border-slate-200 rounded-xl shadow-sm transition-all"><Edit2 className="w-4 h-4"/></button>
+                                        <button onClick={() => handleDeleteUser(u)} className="p-2.5 text-slate-400 hover:text-rose-600 bg-white border border-slate-200 rounded-xl shadow-sm transition-all"><Trash2 className="w-4 h-4"/></button>
                                     </div>
                                 </TableCell>
                             </TableRow>
@@ -543,7 +359,7 @@ export const Settings: React.FC = () => {
                   <div className="bg-white rounded-[2.5rem] border shadow-sm flex flex-col overflow-hidden">
                       <div className="px-10 py-4 bg-slate-50/50 border-b border-slate-100 flex items-center gap-3 shrink-0">
                           <Shield className="w-5 h-5 text-primary-600"/>
-                          <h3 className="font-black text-[11px] uppercase tracking-[0.2em] text-slate-800">Cấp quyền truy cập module</h3>
+                          <h3 className="font-black text-[11px] uppercase tracking-[0.2em] text-slate-800">Ma trận quyền truy cập</h3>
                       </div>
 
                       <div className="flex-1 overflow-y-auto p-8 scrollbar-none">
@@ -551,7 +367,7 @@ export const Settings: React.FC = () => {
                               <div className="h-full flex flex-col items-center justify-center text-center p-10">
                                   <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-[1.5rem] flex items-center justify-center mb-4 border-2 border-emerald-100"><ShieldCheck className="w-8 h-8" /></div>
                                   <h4 className="text-lg font-black uppercase text-slate-800 mb-1">QUẢN TRỊ VIÊN TỐI CAO</h4>
-                                  <p className="text-slate-400 font-bold uppercase text-[9px] tracking-widest max-w-xs">Nhóm quyền Admin luôn được cấp toàn quyền truy cập vào mọi module để đảm bảo vận hành.</p>
+                                  <p className="text-slate-400 font-bold uppercase text-[9px] tracking-widest max-w-xs">Tài khoản Admin có toàn quyền truy cập hệ thống để đảm bảo vận hành không bị gián đoạn.</p>
                               </div>
                           ) : (
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -589,14 +405,14 @@ export const Settings: React.FC = () => {
                                   <div className="flex items-center justify-between">
                                       <div className="flex items-center gap-3">
                                           <div className={`p-3 rounded-xl ${type.bg} ${type.color}`}><Icon className="w-6 h-6" /></div>
-                                          <div><h3 className="text-sm font-black text-slate-800 uppercase">{type.label}</h3><p className="text-[9px] font-bold text-slate-400 uppercase">{existing ? 'Đã tùy chỉnh' : 'Mặc định'}</p></div>
+                                          <div><h3 className="text-sm font-black text-slate-800 uppercase">{type.label}</h3><p className="text-[9px] font-bold text-slate-400 uppercase">{existing ? 'Đã chỉnh sửa' : 'Hệ thống'}</p></div>
                                       </div>
-                                      <Badge variant={existing ? 'success' : 'neutral'}>{existing ? 'CUSTOM' : 'SYSTEM'}</Badge>
+                                      <Badge variant={existing ? 'success' : 'neutral'}>{existing ? 'CUSTOM' : 'DEFAULT'}</Badge>
                                   </div>
                                   <p className="text-xs text-slate-500 font-medium">{type.desc}</p>
                                   <div className="flex gap-2 pt-4">
                                       <button onClick={() => handlePreview(type.id)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-[9px] font-black uppercase transition-all">Xem mẫu</button>
-                                      <button onClick={() => handleEditTemplate(existing || { id: `TPL_${type.id}`, type: type.id, name: type.label, content: '', description: '', createdAt: 0, updatedAt: 0, isActive: true })} className="flex-1 py-2.5 bg-primary-600 text-white rounded-lg text-[9px] font-black uppercase shadow-lg transition-all">Chỉnh sửa</button>
+                                      <button onClick={() => handleEditTemplate(existing || { id: `TPL_${type.id}`, type: type.id, name: type.label, content: '', description: '', createdAt: 0, updatedAt: 0, isActive: true })} className="flex-1 py-2.5 bg-primary-600 text-white rounded-lg text-[9px] font-black uppercase shadow-lg transition-all">Cấu hình mã</button>
                                   </div>
                               </Card>
                           );
@@ -632,14 +448,14 @@ export const Settings: React.FC = () => {
                               <div className="space-y-6">
                                   <div className="flex items-center gap-4 border-b border-slate-50 pb-4">
                                       <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl"><Building2 className="w-6 h-6"/></div>
-                                      <div><h3 className="text-lg font-black text-slate-800 uppercase">Thông tin cửa hàng</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Dữ liệu hiển thị trên hóa đơn</p></div>
+                                      <div><h3 className="text-lg font-black text-slate-800 uppercase">Thông tin thương hiệu</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Thông tin in trên hóa đơn bán lẻ</p></div>
                                   </div>
                                   <div className="grid grid-cols-1 gap-5">
-                                      <ConfigInput label="Tên đơn vị *" value={settings.companyInfo?.name || ''} onChange={e => updateCompanyInfo({ name: e })} type="text" icon={Building2}/>
-                                      <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2"><MapPin className="w-3 h-3"/> Địa chỉ kinh doanh</label><textarea value={settings.companyInfo?.address || ''} onChange={e => updateCompanyInfo({ address: e.target.value })} className="w-full font-bold text-sm" /></div>
+                                      <ConfigInput label="Tên đơn vị chủ quản *" value={settings.companyInfo?.name || ''} onChange={e => setSettings({...settings, companyInfo: {...settings.companyInfo!, name: e}})} type="text" icon={Building2}/>
+                                      <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2"><MapPin className="w-3 h-3"/> Địa chỉ văn phòng</label><textarea value={settings.companyInfo?.address || ''} onChange={e => setSettings({...settings, companyInfo: {...settings.companyInfo!, address: e.target.value}})} className="w-full font-bold text-sm" /></div>
                                       <div className="grid grid-cols-2 gap-5">
-                                          <ConfigInput label="Số điện thoại" value={settings.companyInfo?.phone || ''} onChange={e => updateCompanyInfo({ phone: e })} type="text" icon={Phone}/>
-                                          <ConfigInput label="Mã số thuế" value={settings.companyInfo?.taxCode || ''} onChange={e => updateCompanyInfo({ taxCode: e })} type="text" icon={CreditCard}/>
+                                          <ConfigInput label="Hotline hỗ trợ" value={settings.companyInfo?.phone || ''} onChange={e => setSettings({...settings, companyInfo: {...settings.companyInfo!, phone: e}})} type="text" icon={Phone}/>
+                                          <ConfigInput label="Mã số thuế" value={settings.companyInfo?.taxCode || ''} onChange={e => setSettings({...settings, companyInfo: {...settings.companyInfo!, taxCode: e}})} type="text" icon={CreditCard}/>
                                       </div>
                                   </div>
                               </div>
@@ -649,72 +465,41 @@ export const Settings: React.FC = () => {
                               <div className="space-y-6">
                                   <div className="flex items-center gap-4 border-b border-slate-50 pb-4">
                                       <div className="p-3 bg-sky-50 text-sky-600 rounded-xl"><Receipt className="w-6 h-6"/></div>
-                                      <div><h3 className="text-lg font-black text-slate-800 uppercase">Tùy chọn bản in</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Ẩn/Hiện thông tin trên hóa đơn</p></div>
+                                      <div><h3 className="text-lg font-black text-slate-800 uppercase">Thiết lập bản in</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Tùy chỉnh hiển thị nội dung in</p></div>
                                   </div>
                                   <div className="grid grid-cols-1 gap-4">
-                                      <ToggleOption label="Thông tin đơn vị" desc="Hiển thị tên, SĐT, MST cửa hàng" checked={settings.invoiceOptions?.showCompanyInfo ?? true} onChange={val => updateInvoiceOptions({ showCompanyInfo: val })} />
-                                      <ToggleOption label="Thông tin khách hàng" desc="Hiển thị tên, SĐT và địa chỉ khách" checked={settings.invoiceOptions?.showCustomerInfo ?? true} onChange={val => updateInvoiceOptions({ showCustomerInfo: val })} />
-                                      <ToggleOption label="QR Code tra cứu" desc="In mã QR cho khách tra cứu bảo hành" checked={settings.invoiceOptions?.showQRCode ?? true} onChange={val => updateInvoiceOptions({ showQRCode: val })} />
-                                      <ToggleOption label="Khu vực chữ ký" desc="Phần ký tên ở chân hóa đơn" checked={settings.invoiceOptions?.showSignatures ?? true} onChange={val => updateInvoiceOptions({ showSignatures: val })} />
+                                      <ToggleOption label="Thông tin đơn vị" desc="Hiển thị tên, địa chỉ, hotline đơn vị" checked={settings.invoiceOptions?.showCompanyInfo ?? true} onChange={val => setSettings({...settings, invoiceOptions: {...settings.invoiceOptions!, showCompanyInfo: val}})} />
+                                      <ToggleOption label="Thông tin khách hàng" desc="Hiển thị tên và SĐT khách hàng" checked={settings.invoiceOptions?.showCustomerInfo ?? true} onChange={val => setSettings({...settings, invoiceOptions: {...settings.invoiceOptions!, showCustomerInfo: val}})} />
+                                      <ToggleOption label="Mã QR tra cứu" desc="In mã QR dẫn đến trang bảo hành" checked={settings.invoiceOptions?.showQRCode ?? true} onChange={val => setSettings({...settings, invoiceOptions: {...settings.invoiceOptions!, showQRCode: val}})} />
+                                      <ToggleOption label="Tên nhân viên lập" desc="Ghi nhận nhân viên thực hiện đơn" checked={settings.invoiceOptions?.showStaffName ?? true} onChange={val => setSettings({...settings, invoiceOptions: {...settings.invoiceOptions!, showStaffName: val}})} />
                                   </div>
                               </div>
                           )}
-                          
+
                           {activeConfigSection === 'finance' && (
                               <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
                                   <div className="flex items-center gap-4 border-b border-slate-100 pb-6">
                                       <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl"><Landmark className="w-6 h-6"/></div>
-                                      <div><h3 className="text-lg font-black text-slate-800 uppercase">Thuế & Tài chính</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Thiết lập các tham số tài chính cốt lõi</p></div>
+                                      <div><h3 className="text-lg font-black text-slate-800 uppercase">Tham số tài chính</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Cấu hình thuế và tiền tệ</p></div>
                                   </div>
                                   <div className="grid grid-cols-2 gap-8">
-                                      <ConfigInput label="VAT mặc định" value={settings.defaultVatRate} onChange={v => setSettings({...settings, defaultVatRate: v})} unit="%" icon={Percent}/>
-                                      <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2"><DollarSign className="w-3 h-3"/> Tiền tệ</label><input type="text" value={settings.currencySymbol || '₫'} onChange={e => setSettings({...settings, currencySymbol: e.target.value})} className="w-full font-black text-sm" /></div>
+                                      <ConfigInput label="Thuế suất VAT (%)" value={settings.defaultVatRate} onChange={v => setSettings({...settings, defaultVatRate: v})} unit="%" icon={Percent}/>
+                                      <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2"><DollarSign className="w-3 h-3"/> Ký hiệu tiền tệ</label><input type="text" value={settings.currencySymbol || '₫'} onChange={e => setSettings({...settings, currencySymbol: e.target.value})} className="w-full font-black text-sm" /></div>
                                   </div>
                               </div>
                           )}
 
-                          {activeConfigSection === 'storage' && (
-                              <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
-                                  <div className="flex items-center gap-4 border-b border-slate-100 pb-6">
-                                      <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl"><CloudCog className="w-6 h-6"/></div>
-                                      <div><h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">An toàn dữ liệu</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Quản lý bảo mật và dọn dẹp</p></div>
-                                  </div>
-                                  <div className="space-y-4">
-                                      <ToggleOption label="Làm việc ngoại tuyến" desc="Cho phép hoạt động khi không có Internet" checked={settings.localPersistenceEnabled} onChange={val => setSettings({...settings, localPersistenceEnabled: val})} />
-                                      <div className="p-6 bg-slate-50 rounded-3xl border border-slate-200">
-                                          <div className="flex items-center gap-3 mb-2 text-slate-500"><Info className="w-4 h-4"/><span className="text-[10px] font-black uppercase tracking-widest">Ghi chú quản trị</span></div>
-                                          <p className="text-xs font-medium text-slate-400 leading-relaxed italic">Tính năng Reset hệ thống hiện đã được di chuyển sang tab **"Dữ liệu"** chính để quản lý an toàn và thuận tiện hơn.</p>
-                                      </div>
-                                  </div>
-                              </div>
-                          )}
-                          
                           {activeConfigSection === 'system' && (
                               <div className="space-y-6">
                                   <div className="flex items-center gap-4 border-b border-slate-50 pb-4">
                                       <div className="p-3 bg-slate-50 text-slate-600 rounded-xl"><MonitorSmartphone className="w-6 h-6"/></div>
-                                      <div><h3 className="text-lg font-black text-slate-800 uppercase">Khung hệ thống</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Bố cục màn hình chính</p></div>
+                                      <div><h3 className="text-lg font-black text-slate-800 uppercase">Khung hệ thống</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Bố cục màn hình Workspace</p></div>
                                   </div>
                                   <div className="grid grid-cols-2 gap-5">
                                       <ConfigInput label="Độ dày viền" value={settings.uiConfig.sysBorderWidth} onChange={v => updateUI({ sysBorderWidth: v })} unit="px" icon={Scaling}/>
-                                      <ConfigInput label="Bo góc hệ thống" value={settings.uiConfig.sysRounding} onChange={v => updateUI({ sysRounding: v })} unit="px" icon={Grip}/>
-                                      <ConfigInput label="Chiều rộng Sidebar" value={settings.uiConfig.sysSidebarWidth} onChange={v => updateUI({ sysSidebarWidth: v })} unit="px" icon={MoveHorizontal}/>
-                                      <ConfigInput label="Màu viền" value={settings.uiConfig.sysBorderColor} onChange={v => updateUI({ sysBorderColor: v })} type="color" icon={PaletteIcon}/>
-                                  </div>
-                              </div>
-                          )}
-
-                          {activeConfigSection === 'modal' && (
-                              <div className="space-y-6">
-                                  <div className="flex items-center gap-4 border-b border-slate-50 pb-4">
-                                      <div className="p-3 bg-rose-50 text-rose-600 rounded-xl"><AppWindow className="w-6 h-6"/></div>
-                                      <div><h3 className="text-lg font-black text-slate-800 uppercase">Khung Modal</h3><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Cấu trúc cửa sổ Pop-up</p></div>
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-5">
-                                      <ConfigInput label="Độ dày viền Modal" value={settings.uiConfig.modalBorderWidth} onChange={v => updateUI({ modalBorderWidth: v })} unit="px" icon={Scaling}/>
-                                      <ConfigInput label="Bo góc Modal" value={settings.uiConfig.modalRounding} onChange={v => updateUI({ modalRounding: v })} unit="px" icon={Grip}/>
-                                      <ConfigInput label="Độ cao tối đa" value={settings.uiConfig.modalMaxHeight} onChange={v => updateUI({ modalMaxHeight: v })} unit="vh" icon={MoveVertical}/>
-                                      <ConfigInput label="Màu viền Modal" value={settings.uiConfig.modalBorderColor} onChange={v => updateUI({ modalBorderColor: v })} type="color" icon={PaletteIcon}/>
+                                      <ConfigInput label="Bo góc tổng thể" value={settings.uiConfig.sysRounding} onChange={v => updateUI({ sysRounding: v })} unit="px" icon={Grip}/>
+                                      <ConfigInput label="Độ rộng Sidebar" value={settings.uiConfig.sysSidebarWidth} onChange={v => updateUI({ sysSidebarWidth: v })} unit="px" icon={MoveHorizontal}/>
+                                      <ConfigInput label="Màu sắc viền" value={settings.uiConfig.sysBorderColor} onChange={v => updateUI({ sysBorderColor: v })} type="color" icon={PaletteIcon}/>
                                   </div>
                               </div>
                           )}
@@ -727,59 +512,60 @@ export const Settings: React.FC = () => {
               <div className="px-12 h-full flex flex-col gap-6 animate-in fade-in duration-500 overflow-y-auto pr-1 pb-20">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <Card className="!p-8 group">
-                          <div className="flex items-center gap-4 mb-4"><div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl"><Download className="w-8 h-8"/></div><div><h3 className="text-sm font-black text-slate-800 uppercase leading-none">Sao lưu</h3><p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Xuất file JSON</p></div></div>
-                          <p className="text-[11px] text-slate-500 mb-6 leading-relaxed">Xuất toàn bộ cơ sở dữ liệu (Hàng hóa, Đơn hàng, Khách hàng) ra file lưu trữ an toàn.</p>
-                          <Button variant="primary" onClick={handleBackup} disabled={isProcessing} className="w-full !py-3 bg-emerald-600 hover:bg-emerald-700 text-[10px]">BẮT ĐẦU XUẤT FILE</Button>
-                      </Card>
-
-                      <Card className="!p-8 group">
-                          <div className="flex items-center gap-4 mb-4"><div className="p-4 bg-sky-50 text-sky-600 rounded-2xl"><Upload className="w-8 h-8"/></div><div><h3 className="text-sm font-black text-slate-800 uppercase leading-none">Khôi phục</h3><p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Nhập từ file cũ</p></div></div>
-                          <p className="text-[11px] text-slate-500 mb-6 leading-relaxed">Ghi đè dữ liệu hiện tại bằng dữ liệu từ file backup JSON của bạn (CẢNH BÁO).</p>
-                          <div className="relative">
-                              <input type="file" accept=".json" onChange={handleRestore} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-                              <Button variant="primary" className="w-full !py-3 bg-sky-600 hover:bg-sky-700 text-[10px]">CHỌN FILE KHÔI PHỤC</Button>
-                          </div>
+                          <div className="flex items-center gap-4 mb-4"><div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl"><Download className="w-8 h-8"/></div><div><h3 className="text-sm font-black text-slate-800 uppercase leading-none">Xuất dữ liệu</h3><p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Lưu trữ ngoại tuyến</p></div></div>
+                          <p className="text-[11px] text-slate-500 mb-6 leading-relaxed">Tải xuống toàn bộ cơ sở dữ liệu (Sản phẩm, Đơn hàng, Khách hàng) dưới dạng file JSON.</p>
+                          <Button variant="primary" onClick={handleBackup} disabled={isProcessing} className="w-full !py-3 bg-emerald-600 hover:bg-emerald-700 text-[10px]">TẢI FILE SAO LƯU</Button>
                       </Card>
 
                       <Card className="!p-8 group !border-rose-100 bg-rose-50/20">
-                          <div className="flex items-center gap-4 mb-4"><div className="p-4 bg-rose-50 text-rose-600 rounded-2xl"><RefreshCcw className="w-8 h-8"/></div><div><h3 className="text-sm font-black text-slate-800 uppercase leading-none">Reset Hệ Thống</h3><p className="text-[9px] font-bold text-rose-400 uppercase tracking-widest mt-1">Làm sạch dữ liệu</p></div></div>
-                          <p className="text-[11px] text-slate-500 mb-6 leading-relaxed">Xóa toàn bộ giao dịch hoặc khôi phục phần mềm về trạng thái ban đầu (Factory Reset).</p>
-                          <div className="flex flex-col gap-2">
-                              <button onClick={() => handleOpenRecoveryModal(false)} className="w-full py-2.5 bg-white border border-rose-200 text-rose-600 rounded-xl text-[9px] font-black uppercase hover:bg-rose-600 hover:text-white transition-all shadow-sm">Xóa đơn & kho</button>
-                              <button onClick={() => handleOpenRecoveryModal(true)} className="w-full py-2.5 bg-rose-600 text-white rounded-xl text-[9px] font-black uppercase hover:bg-rose-800 shadow-lg transition-all">Factory Reset (Full)</button>
-                          </div>
+                          <div className="flex items-center gap-4 mb-4"><div className="p-4 bg-rose-50 text-rose-600 rounded-2xl"><RefreshCcw className="w-8 h-8"/></div><div><h3 className="text-sm font-black text-slate-800 uppercase leading-none">Xóa giao dịch</h3><p className="text-[9px] font-bold text-rose-400 uppercase tracking-widest mt-1">Làm sạch số liệu</p></div></div>
+                          <p className="text-[11px] text-slate-500 mb-6 leading-relaxed">Xóa toàn bộ lịch sử đơn hàng, kho và bảo hành. Thông tin danh mục & nhân viên được giữ lại.</p>
+                          <button onClick={() => { setResetLevel('partial'); setIsRecoveryModalOpen(true); }} className="w-full py-3 bg-white border border-rose-200 text-rose-600 rounded-xl text-[9px] font-black uppercase hover:bg-rose-600 hover:text-white transition-all shadow-sm">XÓA TOÀN BỘ GIAO DỊCH</button>
+                      </Card>
+
+                      <Card className="!p-8 group !bg-slate-900 !border-slate-800">
+                          <div className="flex items-center gap-4 mb-4"><div className="p-4 bg-white/10 text-white rounded-2xl"><ShieldAlert className="w-8 h-8"/></div><div><h3 className="text-sm font-black text-white uppercase leading-none">Factory Reset</h3><p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-1">Cài đặt gốc</p></div></div>
+                          <p className="text-[11px] text-slate-400 mb-6 leading-relaxed">Xóa sạch toàn bộ hệ thống về trạng thái ban đầu. Thao tác này không thể hoàn tác.</p>
+                          <button onClick={() => { setResetLevel('full'); setIsRecoveryModalOpen(true); }} className="w-full py-3 bg-rose-600 text-white rounded-xl text-[9px] font-black uppercase hover:bg-rose-700 transition-all shadow-lg">KHÔI PHỤC CÀI ĐẶT GỐC</button>
                       </Card>
                   </div>
               </div>
           )}
       </div>
 
-      {/* MODAL PHỤ TRỢ */}
       {isRecoveryModalOpen && (
-          <Modal isOpen={true} onClose={() => !isProcessing && setIsRecoveryModalOpen(false)} title="Xác minh bảo mật" maxWidth="md" icon={<KeyRound className="w-5 h-5 text-rose-600"/>}>
+          <Modal isOpen={true} onClose={() => setIsRecoveryModalOpen(false)} title="Xác thực bảo mật cao" maxWidth="md" icon={<Lock className="w-5 h-5 text-rose-600"/>}>
               <div className="space-y-6 text-center">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Vui lòng nhập mã khôi phục cấp cho Admin</p>
-                  <input type="text" value={recoveryCodeInput} onChange={e => { setRecoveryCodeInput(e.target.value.toUpperCase()); setRecoveryError(false); }} placeholder="LGC2026" className={`w-full py-5 text-center text-2xl font-black tracking-widest ${recoveryError ? 'border-rose-500 bg-rose-50' : ''}`} />
-                  <button onClick={executeFactoryReset} disabled={recoveryCodeInput.length < 4 || isProcessing} className="w-full py-4 bg-rose-600 text-white rounded-xl font-black text-[10px] uppercase shadow-lg disabled:opacity-50">
-                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin mx-auto"/> : 'XÁC NHẬN XÓA DỮ LIỆU'}
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nhập mã khôi phục hệ thống (Recovery Code)</p>
+                  <input type="text" value={recoveryCodeInput} onChange={e => { setRecoveryCodeInput(e.target.value.toUpperCase()); setRecoveryError(false); }} placeholder="LGC••••" className={`w-full py-5 text-center text-2xl font-black tracking-widest ${recoveryError ? 'border-rose-500 bg-rose-50' : ''}`} />
+                  <button onClick={async () => {
+                      if (recoveryCodeInput !== 'LGC2026') return setRecoveryError(true);
+                      setIsProcessing(true);
+                      try {
+                          await StorageService.factoryReset(resetLevel === 'full');
+                          alert("Hệ thống đã được dọn dẹp.");
+                          window.location.reload();
+                      } finally { setIsProcessing(false); }
+                  }} className="w-full py-4 bg-rose-600 text-white rounded-xl font-black text-[10px] uppercase shadow-lg disabled:opacity-50">
+                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin mx-auto"/> : 'XÁC NHẬN THỰC THI'}
                   </button>
               </div>
           </Modal>
       )}
 
       {isUserModalOpen && (
-          <Modal isOpen={true} onClose={() => setIsUserModalOpen(false)} title={editingUser ? "Cập nhật nhân viên" : "Thêm nhân viên mới"} maxWidth="4xl" icon={<UserIcon className="w-6 h-6 text-primary-600" />}>
+          <Modal isOpen={true} onClose={() => setIsUserModalOpen(false)} title={editingUser ? "Cập nhật nhân viên" : "Tạo tài khoản mới"} maxWidth="4xl" icon={<UserIcon className="w-6 h-6 text-primary-600" />}>
               <div className="space-y-6">
                   <div className="grid grid-cols-2 gap-6">
                       <div className="space-y-4">
-                          <ConfigInput label="Tài khoản *" value={userForm.username} onChange={e => setUserForm({...userForm, username: e})} type="text" />
-                          <ConfigInput label={editingUser ? 'Mật khẩu mới' : 'Mật khẩu *'} value={userForm.password} onChange={e => setUserForm({...userForm, password: e})} type="text" />
-                          <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Vai trò *</label><select value={userForm.role} onChange={e => setUserForm({...userForm, role: e.target.value as UserRole})} className="w-full font-black text-sm uppercase">{ROLES.map(role => (<option key={role.id} value={role.id}>{role.label}</option>))}</select></div>
+                          <ConfigInput label="Tên đăng nhập *" value={userForm.username || ''} onChange={e => setUserForm({...userForm, username: e})} type="text" />
+                          <ConfigInput label={editingUser ? 'Thay mật khẩu' : 'Mật khẩu *'} value={userForm.password || ''} onChange={e => setUserForm({...userForm, password: e})} type="text" />
+                          <div className="space-y-1.5"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Vai trò hệ thống *</label><select value={userForm.role} onChange={e => setUserForm({...userForm, role: e.target.value as UserRole})} className="w-full font-black text-sm uppercase">{ROLES.map(role => (<option key={role.id} value={role.id}>{role.label}</option>))}</select></div>
                       </div>
                       <div className="space-y-4">
-                          <ConfigInput label="Họ tên đầy đủ *" value={userForm.fullName} onChange={e => setUserForm({...userForm, fullName: e})} type="text" />
-                          <ConfigInput label="Số điện thoại" value={userForm.phone} onChange={e => setUserForm({...userForm, phone: e})} type="text" />
-                          <ConfigInput label="Email" value={userForm.email} onChange={e => setUserForm({...userForm, email: e})} type="text" />
+                          <ConfigInput label="Họ tên nhân viên *" value={userForm.fullName || ''} onChange={e => setUserForm({...userForm, fullName: e})} type="text" />
+                          <ConfigInput label="Số điện thoại" value={userForm.phone || ''} onChange={e => setUserForm({...userForm, phone: e})} type="text" />
+                          <ConfigInput label="Trạng thái" value={userForm.isActive ? 1 : 0} onChange={e => setUserForm({...userForm, isActive: e === 1})} type="number" unit="1: Mở, 0: Khóa" />
                       </div>
                   </div>
                   <div className="pt-6 border-t flex justify-end gap-3"><Button variant="secondary" onClick={() => setIsUserModalOpen(false)}>HỦY BỔ</Button><Button variant="primary" onClick={handleSaveUser} disabled={isProcessing} className="px-12">{isProcessing ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : <Save className="w-4 h-4 mr-2" />} LƯU HỒ SƠ</Button></div>
@@ -788,15 +574,14 @@ export const Settings: React.FC = () => {
       )}
 
       {isTemplateModalOpen && (
-          <Modal isOpen={true} onClose={() => setIsTemplateModalOpen(false)} title={`Chỉnh sửa mẫu: ${editingTemplate?.name}`} maxWidth="7xl">
+          <Modal isOpen={true} onClose={() => setIsTemplateModalOpen(false)} title={`Biên tập mẫu in: ${editingTemplate?.name}`} maxWidth="7xl" hideGrid={true}>
               <div className="flex flex-col gap-4 h-[70vh]">
-                  <textarea value={templateContent} onChange={e => setTemplateContent(e.target.value)} className="flex-1 w-full bg-slate-900 text-emerald-400 p-8 font-mono text-xs rounded-xl outline-none resize-none" spellCheck={false}/>
-                  <div className="flex justify-between items-center">
-                      <p className="text-[10px] text-slate-400 font-bold uppercase italic">Sử dụng {"{{key}}"} để điền dữ liệu tự động.</p>
+                  <textarea value={templateContent} onChange={e => setTemplateContent(e.target.value)} className="flex-1 w-full bg-slate-900 text-emerald-400 p-8 font-mono text-xs rounded-xl outline-none resize-none border-none shadow-inner" spellCheck={false}/>
+                  <div className="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-200">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase italic">Hỗ trợ các thẻ: {"{{company_name}}"}, {"{{order_code}}"}, {"{{customer_name}}"}, {"{{items_table}}"}...</p>
                       <div className="flex gap-2">
-                          <button onClick={handleResetTemplate} className="px-5 py-2 bg-rose-50 text-rose-600 rounded-lg text-[10px] font-black uppercase">Mẫu chuẩn</button>
-                          <button onClick={() => handlePreview(editingTemplate?.type || '', templateContent)} className="px-5 py-2 bg-slate-100 rounded-lg text-[10px] font-black uppercase">Xem thử</button>
-                          <Button variant="primary" onClick={handleSaveTemplate} disabled={isProcessing} className="!px-10 !py-3 text-[10px]">LƯU THAY ĐỔI</Button>
+                          <button onClick={() => handlePreview(editingTemplate?.type || '', templateContent)} className="px-5 py-2 bg-white border border-slate-200 rounded-lg text-[10px] font-black uppercase hover:bg-slate-100 transition-all">Xem trước mẫu</button>
+                          <Button variant="primary" onClick={handleSaveTemplate} disabled={isProcessing} className="!px-10 !py-3 text-[10px]">CẬP NHẬT MÃ NGUỒN</Button>
                       </div>
                   </div>
               </div>

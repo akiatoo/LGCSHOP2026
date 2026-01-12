@@ -1,3 +1,4 @@
+
 import { initializeApp } from 'firebase/app';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 
@@ -11,11 +12,12 @@ const firebaseConfig = {
   measurementId: "G-DWKTLQWBEM"
 };
 
-// Khởi tạo Firebase với cấu hình bộ nhớ đệm bền vững (Persistent Cache)
-// Hỗ trợ hoạt động Offline và xử lý lỗi "Could not reach Cloud Firestore backend"
-// Fix: Ensure standard modular named import for initializeApp from 'firebase/app'
+// Fix: Khởi tạo Firebase bằng named export initializeApp
 const app = initializeApp(firebaseConfig);
 
+// Fix: Khởi tạo Firestore bằng modular functions thay vì namespace property access
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
 });

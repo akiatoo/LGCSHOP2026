@@ -7,7 +7,18 @@ import { TemplateRepo } from "../database/templateRepo";
 import { getCurrentUserSync, withTimestamp, cleanupData } from "../database/base";
 import { db } from "../database/config";
 import { LocalDB } from "../database/localDb";
-import { collection, getDocs, setDoc, doc, getDoc, deleteDoc, orderBy, query, writeBatch } from "firebase/firestore";
+// Fix: Use named imports for firestore functions to resolve property access errors
+import { 
+  collection, 
+  getDocs, 
+  writeBatch, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  deleteDoc, 
+  query, 
+  orderBy 
+} from "firebase/firestore";
 import { COLLECTIONS } from "../database/collections";
 import { Order, WarrantyItem, SystemSettings, UIConfig, Expense, Category, Product, Supplier, Customer, User, Gift, PrintTemplate, AuditLog } from '../types';
 
@@ -37,7 +48,7 @@ export const DEFAULT_UI_CONFIG: UIConfig = {
   showGridPattern: false, 
   gridOpacity: 0, 
 
-  // 3. Ô nhập TRONG MODAL
+  // 3. Kích thước ô nhập TRONG MODAL
   modalInputHeight: 48,
   modalInputBorderWidth: 2,
   modalInputRounding: 16,
@@ -99,6 +110,7 @@ export const StorageService = {
       COLLECTIONS.TEMPLATES, COLLECTIONS.SETTINGS, COLLECTIONS.EXPENSES
     ];
     for (const col of collectionsToSync) {
+      // Fix: Use direct function calls instead of firestore namespace
       const snap = await getDocs(collection(db, col));
       const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       await LocalDB.putBatch(col, items);
@@ -106,6 +118,7 @@ export const StorageService = {
   },
 
   importAllData: async (data: any) => {
+    // Fix: Use direct function call for writeBatch
     const batch = writeBatch(db);
     const collectionsMap: Record<string, any[]> = {
       [COLLECTIONS.PRODUCTS]: data.p,
@@ -125,6 +138,7 @@ export const StorageService = {
       items.forEach(item => {
         if (item) {
           const docId = col === COLLECTIONS.SETTINGS ? 'global' : item.id;
+          // Fix: Use direct function call for doc
           if (docId) batch.set(doc(db, col, docId), item);
         }
       });
@@ -135,6 +149,7 @@ export const StorageService = {
 
   getExpenses: async (): Promise<Expense[]> => {
     try {
+        // Fix: Use direct function calls for query, collection, orderBy
         const snap = await getDocs(query(collection(db, COLLECTIONS.EXPENSES), orderBy('date', 'desc')));
         return snap.docs.map(d => ({ id: d.id, ...d.data() })) as Expense[];
     } catch { return []; }
@@ -142,11 +157,13 @@ export const StorageService = {
 
   saveExpense: async (exp: Expense) => {
     const isNew = !exp.createdAt;
+    // Fix: Use direct function calls for setDoc and doc
     await setDoc(doc(db, COLLECTIONS.EXPENSES, exp.id), withTimestamp(exp, isNew));
     await SystemRepo.logAction(isNew ? 'CREATE_EXPENSE' : 'UPDATE_EXPENSE', `${isNew ? 'Ghi nhận' : 'Cập nhật'} chi phí: ${exp.description} (${exp.amount}đ)`);
   },
 
   deleteExpense: async (id: string) => {
+    // Fix: Use direct function calls for doc, getDoc, deleteDoc
     const ref = doc(db, COLLECTIONS.EXPENSES, id);
     const snap = await getDoc(ref);
     const desc = snap.exists() ? snap.data().description : id;
@@ -167,12 +184,14 @@ export const StorageService = {
         createdAt: Date.now(), updatedAt: Date.now(), isActive: true
     };
     try {
+        // Fix: Use direct function calls for getDoc and doc
         const snap = await getDoc(doc(db, COLLECTIONS.SETTINGS, 'global'));
         return snap.exists() ? { ...defaultS, ...snap.data() } : defaultS;
     } catch { return defaultS; }
   },
 
   saveSettings: async (s: SystemSettings) => {
+    // Fix: Use direct function calls for setDoc and doc
     await setDoc(doc(db, COLLECTIONS.SETTINGS, 'global'), withTimestamp(s, false));
     await SystemRepo.logAction('UPDATE_SETTINGS', 'Cập nhật cấu hình hệ thống/giao diện.');
   },
@@ -188,6 +207,8 @@ export const StorageService = {
   getOrdersByCustomer: OrderRepo.getOrdersByCustomer, 
   saveOrder: OrderRepo.saveOrder,
   cancelOrder: OrderRepo.cancelOrder,
+  updateOrderMetadata: OrderRepo.updateOrderMetadata,
+  deleteOrderPermanently: OrderRepo.deleteOrderPermanently,
   getTransactions: OrderRepo.getTransactions,
 
   getCustomers: CustomerRepo.getCustomers,

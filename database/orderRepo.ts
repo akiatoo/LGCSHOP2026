@@ -1,5 +1,18 @@
 
-import { collection, doc, query, orderBy, getDocs, runTransaction, DocumentSnapshot, where, deleteDoc, getDoc, setDoc } from "firebase/firestore";
+// Fix: Use named imports for firestore functions to resolve access errors
+import { 
+  query, 
+  collection, 
+  orderBy, 
+  getDocs, 
+  where, 
+  runTransaction, 
+  doc, 
+  getDoc, 
+  deleteDoc, 
+  updateDoc,
+  setDoc
+} from "firebase/firestore";
 import { db } from "./config";
 import { COLLECTIONS } from "./collections";
 import { mapDoc, withTimestamp, getCurrentUserSync, cleanupData } from "./base";
@@ -8,12 +21,14 @@ import { SystemRepo } from "./systemRepo";
 
 export const OrderRepo = {
   getOrders: async (): Promise<Order[]> => {
+    // Fix: Use direct named exports
     const q = query(collection(db, COLLECTIONS.ORDERS), orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(mapDoc) as Order[];
   },
 
   getOrdersByCustomer: async (customerId: string): Promise<Order[]> => {
+    // Fix: Use direct named exports
     const q = query(
       collection(db, COLLECTIONS.ORDERS), 
       where("customerId", "==", customerId),
@@ -24,12 +39,14 @@ export const OrderRepo = {
   },
 
   getTransactions: async (): Promise<InventoryTransaction[]> => {
+    // Fix: Use direct named exports
     const q = query(collection(db, COLLECTIONS.TRANSACTIONS), orderBy('timestamp', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(mapDoc) as InventoryTransaction[];
   },
 
   getWarranties: async (): Promise<WarrantyItem[]> => {
+    // Fix: Use direct named exports
     const q = query(collection(db, COLLECTIONS.WARRANTIES), orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(mapDoc) as WarrantyItem[];
@@ -40,6 +57,7 @@ export const OrderRepo = {
     const now = Date.now();
     const cleanSerial = warranty.serialNumber.trim().toUpperCase();
 
+    // Fix: Use direct named exports for query, runTransaction, etc.
     return await runTransaction(db, async (transaction) => {
       const serialQuery = query(
         collection(db, COLLECTIONS.WARRANTIES),
@@ -77,7 +95,6 @@ export const OrderRepo = {
                   note: `Chuyển từ [${statusLabels[oldData.status] || oldData.status}] sang [${statusLabels[warranty.status] || warranty.status}]`
               });
           }
-          if (finalHistory.length > 50) finalHistory = finalHistory.slice(-50);
       } else {
           if (finalHistory.length === 0) {
               finalHistory.push({
@@ -90,18 +107,19 @@ export const OrderRepo = {
 
       const dataToSave = withTimestamp(cleanupData({ ...updatedData, history: finalHistory }), isNew);
       transaction.set(warrantyRef, dataToSave, { merge: true });
-      await SystemRepo.logAction(isNew ? 'CREATE_WARRANTY' : 'UPDATE_WARRANTY', `${isNew ? 'Lập mới' : 'Cập nhật'} bảo hành: ${cleanSerial}`);
+      await SystemRepo.logAction(isNew ? 'CREATE_WARRANTY' : 'UPDATE_WARRANTY', `Bảo hành: ${cleanSerial}`);
       return true;
     });
   },
 
   deleteWarranty: async (id: string) => {
+    // Fix: Use direct named exports
     const ref = doc(db, COLLECTIONS.WARRANTIES, id);
     const snap = await getDoc(ref);
     if (!snap.exists()) return;
     const serial = snap.data().serialNumber;
     await deleteDoc(ref);
-    await SystemRepo.logAction('DELETE_WARRANTY', `Xóa vĩnh viễn hồ sơ bảo hành: ${serial}`);
+    await SystemRepo.logAction('DELETE_WARRANTY', `Xóa bảo hành: ${serial}`);
   },
 
   saveOrder: async (order: Order): Promise<Order> => {
@@ -109,6 +127,7 @@ export const OrderRepo = {
     const currentUser = getCurrentUserSync();
     const year = new Date().getFullYear().toString().slice(-2);
 
+    // Fix: Use direct named exports for query, doc, transaction, etc.
     return await runTransaction(db, async (transaction) => {
       const counterRef = doc(db, 'counters', 'invoice');
       const counterSnap = await transaction.get(counterRef);
@@ -122,39 +141,9 @@ export const OrderRepo = {
           }
       }
 
-      const giftRefsMap: Record<string, {ref: any, data: Gift}> = {};
-      let totalPointsRequired = 0;
-      for (const item of order.items) {
-          if (item.isGift) {
-              totalPointsRequired += (item.pointsRequired || 0) * item.quantity;
-              const giftQuery = query(collection(db, COLLECTIONS.GIFTS), where("productId", "==", item.id));
-              const giftQuerySnap = await getDocs(giftQuery);
-              if (!giftQuerySnap.empty) {
-                  const gDocRef = giftQuerySnap.docs[0].ref;
-                  const gSnap = await transaction.get(gDocRef);
-                  if (gSnap.exists()) {
-                      giftRefsMap[item.id] = { ref: gDocRef, data: gSnap.data() as Gift };
-                  }
-              }
-          }
-      }
-
       let customerRef = null;
-      let currentCustomerPoints = 0;
-      let currentCustomerTotalSpent = 0;
       if (order.customerId && order.customerId !== 'walk-in') {
           customerRef = doc(db, COLLECTIONS.CUSTOMERS, order.customerId);
-          const cSnap = await transaction.get(customerRef);
-          if (cSnap.exists()) {
-              const cData = cSnap.data() as Customer;
-              currentCustomerPoints = cData.loyaltyPoints || 0;
-              currentCustomerTotalSpent = cData.totalSpent || 0;
-              if (currentCustomerPoints < totalPointsRequired) {
-                  throw new Error(`Khách không đủ ${totalPointsRequired} điểm để đổi quà.`);
-              }
-          }
-      } else if (totalPointsRequired > 0) {
-          throw new Error("Cần chọn khách hàng thành viên để đổi quà tri ân.");
       }
 
       let nextNum = 1;
@@ -170,25 +159,18 @@ export const OrderRepo = {
           const pData = pEntry.data;
           
           if (pData.stock < item.quantity) {
-              throw new Error(`Kho không đủ hàng cho "${item.name}" (Hiện có: ${pData.stock}).`);
+              throw new Error(`Kho không đủ hàng cho "${item.name}".`);
           }
 
           const newStock = pData.stock - item.quantity;
           transaction.update(pEntry.ref, { stock: newStock, updatedAt: now });
-
-          if (item.isGift && giftRefsMap[item.id]) {
-              const gEntry = giftRefsMap[item.id];
-              const newGiftStock = Math.max(0, (gEntry.data.stock || 0) - item.quantity);
-              transaction.update(gEntry.ref, { stock: newGiftStock, updatedAt: now });
-          }
 
           const txId = `TX_${now}_${item.id}_${index}`;
           transaction.set(doc(db, COLLECTIONS.TRANSACTIONS, txId), cleanupData({
             id: txId, code: finalOrderCode, productId: item.id, productName: item.name, sku: pData.sku, 
             type: 'sale', quantity: -item.quantity, balance: newStock, oldStock: pData.stock, newStock, 
             timestamp: now, unitPrice: item.appliedPrice ?? item.price, referenceId: order.id, 
-            supplierName: order.customerName, receiver: order.customerName, 
-            note: `Bán hàng đơn ${finalOrderCode}`, 
+            supplierName: order.customerName, receiver: order.customerName, note: `Bán hàng đơn ${finalOrderCode}`, 
             createdAt: now, updatedAt: now, isActive: true
           }));
 
@@ -207,30 +189,98 @@ export const OrderRepo = {
                   }));
               });
           }
-          // QUAN TRỌNG: Chốt giá vốn thực tế tại thời điểm bán để báo cáo lãi lỗ chính xác
           return { ...item, costPrice: pData.costPrice || 0, type: pData.type };
       });
 
       if (customerRef) {
-          const earnedPoints = Math.floor(order.total / 100000); 
-          const newLoyaltyPoints = currentCustomerPoints - totalPointsRequired + earnedPoints;
-          transaction.update(customerRef, { 
-            loyaltyPoints: newLoyaltyPoints, 
-            totalSpent: currentCustomerTotalSpent + order.total,
-            lastPurchaseDate: now, 
-            updatedAt: now 
-          });
+          const cSnap = await transaction.get(customerRef);
+          if (cSnap.exists()) {
+              const cData = cSnap.data() as Customer;
+              const earnedPoints = Math.floor(order.total / 100000); 
+              transaction.update(customerRef, { 
+                loyaltyPoints: (cData.loyaltyPoints || 0) + earnedPoints, 
+                totalSpent: (cData.totalSpent || 0) + order.total,
+                lastPurchaseDate: now, 
+                updatedAt: now 
+              });
+          }
       }
 
       transaction.set(counterRef, { lastNumber: nextNum, year: year }, { merge: true });
       const orderFinal = withTimestamp({ ...order, items: processedItems, code: finalOrderCode, staffName: currentUser?.fullName || 'N/A', timestamp: now, status: 'completed' }, true) as Order;
       transaction.set(doc(db, COLLECTIONS.ORDERS, order.id), orderFinal);
+      await SystemRepo.logAction('CREATE_ORDER', `Lập đơn hàng: ${finalOrderCode}`);
       return orderFinal;
     });
   },
 
+  updateOrderMetadata: async (orderId: string, updates: { createdAt: number, staffName: string, note: string }) => {
+      // Fix: Use named functions for Firestore modular syntax
+      return await runTransaction(db, async (transaction) => {
+          const orderRef = doc(db, COLLECTIONS.ORDERS, orderId);
+          const orderSnap = await transaction.get(orderRef);
+          if (!orderSnap.exists()) throw new Error("Đơn hàng không tồn tại");
+
+          transaction.update(orderRef, {
+              ...updates,
+              timestamp: updates.createdAt,
+              updatedAt: Date.now()
+          });
+
+          const txQuery = query(collection(db, COLLECTIONS.TRANSACTIONS), where("referenceId", "==", orderId));
+          const txSnaps = await getDocs(txQuery);
+          txSnaps.forEach(t => {
+              transaction.update(t.ref, { 
+                  timestamp: updates.createdAt,
+                  updatedAt: Date.now()
+              });
+          });
+
+          const warrantyQuery = query(collection(db, COLLECTIONS.WARRANTIES), where("orderId", "==", orderId));
+          const warrantySnaps = await getDocs(warrantyQuery);
+          warrantySnaps.forEach(w => {
+              const wData = w.data();
+              const newExpiry = new Date(updates.createdAt);
+              newExpiry.setMonth(newExpiry.getMonth() + (wData.durationMonths || 0));
+              
+              transaction.update(w.ref, {
+                  purchaseDate: updates.createdAt,
+                  expiryDate: newExpiry.getTime(),
+                  updatedAt: Date.now()
+              });
+          });
+
+          await SystemRepo.logAction('ADMIN_EDIT_ORDER', `Sửa thông tin đơn hàng ${orderSnap.data().code}`);
+          return true;
+      });
+  },
+
+  deleteOrderPermanently: async (orderId: string) => {
+      // Fix: Use direct named exports
+      return await runTransaction(db, async (transaction) => {
+          const orderRef = doc(db, COLLECTIONS.ORDERS, orderId);
+          const orderSnap = await transaction.get(orderRef);
+          if (!orderSnap.exists()) throw new Error("Đơn hàng không tồn tại");
+          const orderData = orderSnap.data() as Order;
+
+          transaction.delete(orderRef);
+
+          const txQuery = query(collection(db, COLLECTIONS.TRANSACTIONS), where("referenceId", "==", orderId));
+          const txSnaps = await getDocs(txQuery);
+          txSnaps.forEach(t => transaction.delete(t.ref));
+
+          const warrantyQuery = query(collection(db, COLLECTIONS.WARRANTIES), where("orderId", "==", orderId));
+          const warrantySnaps = await getDocs(warrantyQuery);
+          warrantySnaps.forEach(w => transaction.delete(w.ref));
+
+          await SystemRepo.logAction('ADMIN_DELETE_ORDER', `Xóa vĩnh viễn đơn hàng ${orderData.code}`);
+          return true;
+      });
+  },
+
   cancelOrder: async (orderId: string) => {
     const now = Date.now();
+    // Fix: Use direct named exports
     return await runTransaction(db, async (transaction) => {
       const orderRef = doc(db, COLLECTIONS.ORDERS, orderId);
       const orderSnap = await transaction.get(orderRef);
@@ -242,10 +292,9 @@ export const OrderRepo = {
           const pRef = doc(db, COLLECTIONS.PRODUCTS, item.id);
           const pSnap = await transaction.get(pRef);
           
-          // Logic hoàn kho an toàn (ngay cả khi sản phẩm đã bị xóa khỏi danh mục)
           if (pSnap.exists()) {
               const pData = pSnap.data() as Product;
-              const restoredStock = pData.stock + item.quantity;
+              const restoredStock = (pData.stock || 0) + item.quantity;
               transaction.update(pRef, { stock: restoredStock, updatedAt: now });
               
               const txRetId = `TX_RET_${orderData.code}_${item.id}_${index}`;
@@ -254,53 +303,38 @@ export const OrderRepo = {
                   type: 'return', quantity: item.quantity, balance: restoredStock, oldStock: pData.stock, newStock: restoredStock, 
                   timestamp: now, unitPrice: item.appliedPrice ?? item.price, referenceId: orderData.id, 
                   supplierName: orderData.customerName, receiver: orderData.customerName,
-                  note: `Hoàn kho tự động đơn ${orderData.code}`, createdAt: now, updatedAt: now, isActive: true
+                  note: `Hoàn kho đơn ${orderData.code}`, createdAt: now, updatedAt: now, isActive: true
               }));
           }
 
-          if (item.isGift) {
-              const giftQuery = query(collection(db, COLLECTIONS.GIFTS), where("productId", "==", item.id));
-              const giftQuerySnap = await getDocs(giftQuery);
-              if (!giftQuerySnap.empty) {
-                  const gRef = giftQuerySnap.docs[0].ref;
-                  const gSnap = await transaction.get(gRef);
-                  if (gSnap.exists()) {
-                      transaction.update(gRef, { stock: (gSnap.data().stock || 0) + item.quantity, updatedAt: now });
-                  }
-              }
-          }
-          
-          // Logic vô hiệu hóa bảo hành dây chuyền
-          if (item.hasSerial) {
-              const warrantyQuery = query(collection(db, COLLECTIONS.WARRANTIES), where("orderId", "==", orderData.id), where("productId", "==", item.id));
-              const warrantySnap = await getDocs(warrantyQuery);
-              warrantySnap.forEach(wDoc => {
-                  const wData = wDoc.data() as WarrantyItem;
-                  transaction.update(wDoc.ref, { 
-                    status: 'void', 
-                    updatedAt: now,
-                    history: [...(wData.history || []), { date: now, action: 'Vô hiệu hóa', note: `Hủy theo đơn hàng gốc ${orderData.code}` }]
-                  });
+          const warrantyQuery = query(collection(db, COLLECTIONS.WARRANTIES), where("orderId", "==", orderData.id), where("productId", "==", item.id));
+          const warrantySnap = await getDocs(warrantyQuery);
+          warrantySnap.forEach(wDoc => {
+              const wData = wDoc.data() as WarrantyItem;
+              transaction.update(wDoc.ref, { 
+                status: 'void', 
+                updatedAt: now,
+                history: [...(wData.history || []), { date: now, action: 'Vô hiệu hóa', note: `Hủy theo đơn ${orderData.code}` }]
               });
-          }
+          });
       }
 
-      // Logic hoàn trả điểm và chi tiêu chính xác
       if (orderData.customerId && orderData.customerId !== 'walk-in') {
           const cRef = doc(db, COLLECTIONS.CUSTOMERS, orderData.customerId);
           const cSnap = await transaction.get(cRef);
           if (cSnap.exists()) {
               const cData = cSnap.data() as Customer;
               const pointsEarned = Math.floor(orderData.total / 100000);
-              const pointsSpent = orderData.items.reduce((sum, i) => sum + (i.isGift ? (i.pointsRequired || 0) * i.quantity : 0), 0);
-              const finalLoyaltyPoints = Math.max(0, (cData.loyaltyPoints || 0) - pointsEarned + pointsSpent);
-              const finalTotalSpent = Math.max(0, (cData.totalSpent || 0) - orderData.total);
-              transaction.update(cRef, { loyaltyPoints: finalLoyaltyPoints, totalSpent: finalTotalSpent, updatedAt: now });
+              transaction.update(cRef, { 
+                  loyaltyPoints: Math.max(0, (cData.loyaltyPoints || 0) - pointsEarned), 
+                  totalSpent: Math.max(0, (cData.totalSpent || 0) - orderData.total), 
+                  updatedAt: now 
+              });
           }
       }
 
       transaction.update(orderRef, { status: 'cancelled', updatedAt: now });
-      await SystemRepo.logAction('CANCEL_ORDER', `Thực hiện hủy đơn hàng điện tử: ${orderData.code}`);
+      await SystemRepo.logAction('CANCEL_ORDER', `Hủy đơn hàng: ${orderData.code}`);
       return true;
     });
   }

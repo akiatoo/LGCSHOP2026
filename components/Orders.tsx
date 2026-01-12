@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Order } from '../types';
+import { Order, User as UserType } from '../types';
 import { StorageService } from '../services/storageService';
 import { printInvoice } from '../services/printService';
 import { TableContainer, TableHead, TableBody, TableRow, TableCell, TableHeaderCell, EmptyState, Button, Badge } from './ui/Base';
@@ -8,7 +8,8 @@ import { Modal } from './ui/Modal';
 import { 
   FileText, User, XCircle, ScanBarcode, Printer, Hammer,
   Wallet, ReceiptText, Clock, Trash2, Search as SearchIcon,
-  ArrowUpFromLine, Gift as GiftIcon, Package2, AlertTriangle, Loader2, RefreshCcw
+  ArrowUpFromLine, Gift as GiftIcon, Package2, AlertTriangle, Loader2, RefreshCcw,
+  Edit, Save, ShieldCheck, Calendar, UserCheck
 } from 'lucide-react';
 
 export const Orders: React.FC = () => {
@@ -17,12 +18,21 @@ export const Orders: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'cancelled'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
+
+  // State chỉnh sửa cho Admin
+  const [isAdminEditMode, setIsAdminEditMode] = useState(false);
+  const [editForm, setEditForm] = useState({ date: '', time: '', staffName: '', note: '' });
 
   useEffect(() => {
+    setCurrentUser(StorageService.getCurrentUserSync());
     loadData();
   }, []);
+
+  const isAdmin = currentUser?.role === 'admin';
 
   const loadData = async () => {
     setIsLoading(true);
@@ -37,9 +47,8 @@ export const Orders: React.FC = () => {
   };
 
   const handleCancelOrder = async () => {
-    if (!selectedOrder || isCancelling) return;
-    
-    setIsCancelling(true);
+    if (!selectedOrder || isProcessing) return;
+    setIsProcessing(true);
     try {
       const success = await StorageService.cancelOrder(selectedOrder.id);
       if (success) { 
@@ -50,13 +59,62 @@ export const Orders: React.FC = () => {
     } catch (err: any) {
         alert(err.message || "Không thể hủy đơn hàng.");
     } finally {
-        setIsCancelling(false);
+        setIsProcessing(false);
     }
+  };
+
+  const handleDeletePermanently = async () => {
+      if (!selectedOrder || !isAdmin || isProcessing) return;
+      setIsProcessing(true);
+      try {
+          await StorageService.deleteOrderPermanently(selectedOrder.id);
+          await loadData();
+          setSelectedOrder(null);
+          setShowDeleteConfirm(false);
+      } catch (err: any) {
+          alert(err.message || "Lỗi xóa đơn hàng.");
+      } finally {
+          setIsProcessing(true);
+      }
+  };
+
+  const handleSaveAdminEdit = async () => {
+      if (!selectedOrder || !isAdmin || isProcessing) return;
+      
+      const newTimestamp = new Date(`${editForm.date}T${editForm.time}`).getTime();
+      if (isNaN(newTimestamp)) return alert("Ngày giờ không hợp lệ");
+
+      setIsProcessing(true);
+      try {
+          await StorageService.updateOrderMetadata(selectedOrder.id, {
+              createdAt: newTimestamp,
+              staffName: editForm.staffName,
+              note: editForm.note
+          });
+          await loadData();
+          setIsAdminEditMode(false);
+          setSelectedOrder(null);
+      } catch (err: any) {
+          alert(err.message || "Lỗi cập nhật đơn hàng.");
+      } finally {
+          setIsProcessing(false);
+      }
   };
 
   const handleOpenDetail = useCallback((order: Order) => {
     setSelectedOrder(order);
     setShowCancelConfirm(false);
+    setShowDeleteConfirm(false);
+    setIsAdminEditMode(false);
+
+    // Init edit form
+    const d = new Date(order.createdAt);
+    setEditForm({
+        date: d.toISOString().split('T')[0],
+        time: d.toTimeString().split(' ')[0].slice(0, 5),
+        staffName: order.staffName,
+        note: order.note || ''
+    });
   }, []);
 
   const filteredOrders = useMemo(() => {
@@ -181,13 +239,67 @@ export const Orders: React.FC = () => {
         <Modal 
           key={selectedOrder.id}
           isOpen={true} 
-          onClose={() => !isCancelling && setSelectedOrder(null)} 
+          onClose={() => !isProcessing && setSelectedOrder(null)} 
           title={`Chứng từ điện tử: ${selectedOrder.code}`} 
           maxWidth="5xl" 
           icon={<ReceiptText className="w-6 h-6" />}
           hideGrid={true}
         >
             <div className="space-y-4">
+                {/* ADMIN EDIT PANEL */}
+                {isAdmin && (
+                    <div className={`p-5 rounded-2xl border-2 transition-all ${isAdminEditMode ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-200 opacity-80 hover:opacity-100'}`}>
+                        <div className="flex justify-between items-center mb-4">
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 bg-indigo-600 text-white rounded-lg"><ShieldCheck className="w-4 h-4"/></div>
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-700">Điều khiển Quản trị viên</h4>
+                            </div>
+                            {!isAdminEditMode ? (
+                                <button onClick={() => setIsAdminEditMode(true)} className="flex items-center gap-2 px-4 py-1.5 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-[9px] font-black uppercase hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
+                                    <Edit className="w-3 h-3"/> Chỉnh sửa Metadata
+                                </button>
+                            ) : (
+                                <button onClick={() => setIsAdminEditMode(false)} className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-rose-500">Hủy sửa</button>
+                            )}
+                        </div>
+
+                        {isAdminEditMode && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in slide-in-from-top-2">
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black text-indigo-400 uppercase tracking-widest ml-1">Ngày lập đơn</label>
+                                    <div className="relative">
+                                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-indigo-400"/>
+                                        <input type="date" value={editForm.date} onChange={e => setEditForm({...editForm, date: e.target.value})} className="w-full pl-9 !h-10 text-xs font-black border-indigo-100 focus:border-indigo-400 bg-white" />
+                                    </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black text-indigo-400 uppercase tracking-widest ml-1">Giờ lập</label>
+                                    <div className="relative">
+                                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-indigo-400"/>
+                                        <input type="time" value={editForm.time} onChange={e => setEditForm({...editForm, time: e.target.value})} className="w-full pl-9 !h-10 text-xs font-black border-indigo-100 focus:border-indigo-400 bg-white" />
+                                    </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black text-indigo-400 uppercase tracking-widest ml-1">Nhân viên thực hiện</label>
+                                    <div className="relative">
+                                        <UserCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-indigo-400"/>
+                                        <input type="text" value={editForm.staffName} onChange={e => setEditForm({...editForm, staffName: e.target.value})} className="w-full pl-9 !h-10 text-xs font-black border-indigo-100 focus:border-indigo-400 bg-white" />
+                                    </div>
+                                </div>
+                                <div className="flex items-end">
+                                    <button onClick={handleSaveAdminEdit} disabled={isProcessing} className="w-full !h-10 bg-indigo-600 text-white rounded-xl font-black text-[9px] uppercase tracking-widest shadow-md hover:bg-indigo-700 flex items-center justify-center gap-2">
+                                        {isProcessing ? <Loader2 className="w-3 h-3 animate-spin"/> : <Save className="w-3 h-3"/>} Lưu thay đổi
+                                    </button>
+                                </div>
+                                <div className="lg:col-span-4 space-y-1">
+                                    <label className="text-[8px] font-black text-indigo-400 uppercase tracking-widest ml-1">Ghi chú nội bộ</label>
+                                    <input type="text" value={editForm.note} onChange={e => setEditForm({...editForm, note: e.target.value})} className="w-full !h-10 text-xs font-bold border-indigo-100 focus:border-indigo-400 bg-white" placeholder="Sửa lý do hoặc bổ sung thông tin..." />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {selectedOrder.status === 'cancelled' && (
                   <div className="bg-rose-50 border-2 border-rose-100 p-4 rounded-xl flex items-center gap-4 animate-in slide-in-from-top-2">
                     <div className="p-2 bg-rose-600 text-white rounded-lg"><XCircle className="w-6 h-6"/></div>
@@ -198,29 +310,31 @@ export const Orders: React.FC = () => {
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-0.5">
-                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Thời gian giao dịch</span>
-                        <span className="text-[13px] font-black text-slate-800 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-slate-400"/> {formatDate(selectedOrder.createdAt)}</span>
-                    </div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-0.5">
-                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Khách hàng</span>
-                        <span className="text-[13px] font-black text-slate-800 flex items-center gap-1.5 uppercase"><User className="w-3.5 h-3.5 text-slate-400"/> {selectedOrder.customerName}</span>
-                    </div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-0.5">
-                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Mã phiếu xuất</span>
-                        <span className="text-[13px] font-black text-slate-800 flex items-center gap-1.5 uppercase"><ArrowUpFromLine className="w-3.5 h-3.5 text-slate-400"/> {selectedOrder.code}</span>
-                    </div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-0.5">
-                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Hình thức thanh toán</span>
-                        <div className="flex items-center gap-1.5">
-                          <Wallet className="w-3.5 h-3.5 text-slate-400"/>
-                          <Badge variant="neutral" className="text-[8px] py-0.5 px-2 font-black uppercase bg-white border-slate-200">
-                            {selectedOrder.paymentMethod === 'cash' ? 'Tiền mặt' : (selectedOrder.paymentMethod === 'transfer' ? 'Chuyển khoản' : 'Thẻ')}
-                          </Badge>
+                {!isAdminEditMode && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-0.5">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Thời gian giao dịch</span>
+                            <span className="text-[13px] font-black text-slate-800 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-slate-400"/> {formatDate(selectedOrder.createdAt)}</span>
+                        </div>
+                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-0.5">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Khách hàng</span>
+                            <span className="text-[13px] font-black text-slate-800 flex items-center gap-1.5 uppercase"><User className="w-3.5 h-3.5 text-slate-400"/> {selectedOrder.customerName}</span>
+                        </div>
+                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-0.5">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Mã phiếu xuất</span>
+                            <span className="text-[13px] font-black text-slate-800 flex items-center gap-1.5 uppercase"><ArrowUpFromLine className="w-3.5 h-3.5 text-slate-400"/> {selectedOrder.code}</span>
+                        </div>
+                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-0.5">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Hình thức thanh toán</span>
+                            <div className="flex items-center gap-1.5">
+                            <Wallet className="w-3.5 h-3.5 text-slate-400"/>
+                            <Badge variant="neutral" className="text-[8px] py-0.5 px-2 font-black uppercase bg-white border-slate-200">
+                                {selectedOrder.paymentMethod === 'cash' ? 'Tiền mặt' : (selectedOrder.paymentMethod === 'transfer' ? 'Chuyển khoản' : 'Thẻ')}
+                            </Badge>
+                            </div>
                         </div>
                     </div>
-                </div>
+                )}
                 
                 <div className="space-y-2">
                     <div className="flex justify-between items-center px-1">
@@ -239,7 +353,6 @@ export const Orders: React.FC = () => {
                                 const isLoyaltyGift = item.isGift;
                                 const isPromotionalGift = item.appliedPrice === 0 && !item.isGift;
                                 const isAnyGift = isLoyaltyGift || isPromotionalGift;
-                                // Kiểm tra loại vật tư từ item (đã được lưu ở database/orderRepo.ts)
                                 const isMaterial = (item as any).type === 'material';
                                 
                                 return (
@@ -316,7 +429,7 @@ export const Orders: React.FC = () => {
 
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-3 border-t border-slate-100">
                     <div className="flex gap-2 w-full sm:w-auto relative">
-                        {selectedOrder.status !== 'cancelled' && !showCancelConfirm && (
+                        {selectedOrder.status !== 'cancelled' && !showCancelConfirm && !showDeleteConfirm && (
                             <button 
                               onClick={() => setShowCancelConfirm(true)} 
                               className="px-4 py-2 bg-white border-2 border-rose-100 text-rose-500 hover:bg-rose-50 rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-sm"
@@ -324,34 +437,67 @@ export const Orders: React.FC = () => {
                                 <Trash2 className="w-3.5 h-3.5" /> HỦY GIAO DỊCH
                             </button>
                         )}
-                        {selectedOrder.status !== 'cancelled' && showCancelConfirm && (
+
+                        {isAdmin && !showCancelConfirm && !showDeleteConfirm && (
+                            <button 
+                                onClick={() => setShowDeleteConfirm(true)}
+                                className="px-4 py-2 bg-rose-600 text-white hover:bg-rose-700 rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-lg"
+                            >
+                                <AlertTriangle className="w-3.5 h-3.5" /> XÓA VĨNH VIỄN
+                            </button>
+                        )}
+
+                        {showCancelConfirm && (
                             <div className="flex items-center gap-2 bg-rose-50 p-1.5 rounded-xl border border-rose-200 animate-in slide-in-from-left-2 duration-300">
                                 <span className="text-[9px] font-black text-rose-700 px-2 flex items-center gap-1">
                                     <AlertTriangle className="w-3 h-3" /> CHẮC CHẮN HỦY?
                                 </span>
                                 <button 
                                     onClick={handleCancelOrder}
-                                    disabled={isCancelling}
+                                    disabled={isProcessing}
                                     className="px-3 py-1 bg-rose-600 text-white rounded-lg font-black text-[9px] uppercase hover:bg-rose-700 transition-all flex items-center gap-1"
                                 >
-                                    {isCancelling ? <Loader2 className="w-3 h-3 animate-spin"/> : 'CÓ, HỦY NGAY'}
+                                    {isProcessing ? <Loader2 className="w-3 h-3 animate-spin"/> : 'CÓ, HỦY NGAY'}
                                 </button>
                                 <button 
                                     onClick={() => setShowCancelConfirm(false)}
-                                    disabled={isCancelling}
+                                    disabled={isProcessing}
                                     className="px-3 py-1 bg-white text-slate-400 rounded-lg font-black text-[9px] uppercase border border-slate-200"
                                 >
                                     KHÔNG
                                 </button>
                             </div>
                         )}
-                        {selectedOrder.status === 'cancelled' && <Badge variant="danger" className="py-2 px-4 text-[9px] uppercase tracking-widest">Đơn hàng đã vô hiệu</Badge>}
+
+                        {showDeleteConfirm && (
+                            <div className="flex items-center gap-2 bg-slate-900 p-1.5 rounded-xl border border-rose-500 animate-in slide-in-from-left-2 duration-300">
+                                <span className="text-[9px] font-black text-rose-400 px-2 flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3" /> XÓA MẤT DỮ LIỆU KHO?
+                                </span>
+                                <button 
+                                    onClick={handleDeletePermanently}
+                                    disabled={isProcessing}
+                                    className="px-3 py-1 bg-rose-600 text-white rounded-lg font-black text-[9px] uppercase hover:bg-rose-700"
+                                >
+                                    XÓA TRẮNG
+                                </button>
+                                <button 
+                                    onClick={() => setShowDeleteConfirm(false)}
+                                    disabled={isProcessing}
+                                    className="px-3 py-1 bg-white text-slate-400 rounded-lg font-black text-[9px] uppercase"
+                                >
+                                    HỦY
+                                </button>
+                            </div>
+                        )}
+
+                        {selectedOrder.status === 'cancelled' && !showDeleteConfirm && <Badge variant="danger" className="py-2 px-4 text-[9px] uppercase tracking-widest">Đơn hàng đã vô hiệu</Badge>}
                     </div>
                     <div className="flex gap-2 w-full sm:w-auto">
                         <Button variant="secondary" onClick={(e) => { e.stopPropagation(); printInvoice(selectedOrder); }} className="gap-1.5 flex-1 sm:flex-none py-2 px-4 shadow-sm hover:shadow-md transition-all active:scale-95 text-[9px] tracking-widest">
                             <Printer className="w-3.5 h-3.5" /> IN LẠI
                         </Button>
-                        <Button variant="primary" onClick={(e) => { e.stopPropagation(); setSelectedOrder(null); }} className="flex-1 sm:flex-none py-2 px-6 shadow-sm hover:shadow-md transition-all active:scale-95 uppercase text-[9px] tracking-widest" disabled={isCancelling}>ĐÓNG</Button>
+                        <Button variant="primary" onClick={(e) => { e.stopPropagation(); setSelectedOrder(null); }} className="flex-1 sm:flex-none py-2 px-6 shadow-sm hover:shadow-md transition-all active:scale-95 uppercase text-[9px] tracking-widest" disabled={isProcessing}>ĐÓNG</Button>
                     </div>
                 </div>
             </div>
